@@ -3330,25 +3330,32 @@ html {
   --safe-bottom: env(safe-area-inset-bottom);
 }
 
-body {
-  height: 100vh;
-  height: 100dvh;
-  overflow: hidden;
-  background: var(--bg-cream);
-  color: var(--text-dark);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-}
-body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+html {
     height: 100%;
+    height: 100dvh;
+}
+
+body {
+    height: 100%;
+    height: 100dvh;
     overflow: hidden;
-    background: var(--bg-cream);
-    color: var(--text-dark);
 }
 
 .home {
-  height: 100vh;
-  height: 100dvh;
-  padding-top: env(safe-area-inset-top);
-  box-sizing: border-box;
+    height: 100%;
+    height: 100dvh;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    box-sizing: border-box;
+}
+
+.home-dock {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 3;
+    width: 90%;
+    max-width: 280px;
+    padding-bottom: env(safe-area-inset-bottom);
 }
