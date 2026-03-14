@@ -1,0 +1,2142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>HuIOS</title>
+    <!-- 删除原来的<style>...</style>，替换为： -->
+    <link rel="stylesheet" href="样式.css">
+<script src="https://unpkg.com/dexie@latest/dist/dexie.js"></script>
+</head>
+<body>
+    <div class="toast" id="toast"></div>
+    <div class="msg-menu" id="msgMenu"></div>
+
+<!-- 通知容器 -->
+<div id="iosNotifyContainer" style="position:fixed;top:20px;left:12px;right:12px;z-index:99999;display:flex;flex-direction:column;gap:10px;pointer-events:none;justify-content:flex-end"></div>
+
+    <div class="error-modal" id="errorModal">
+        <div class="error-box">
+            <h3>❌ 出错了</h3>
+            <div class="error-msg" id="errorMsg"></div>
+            <div class="modal-btns">
+                <button class="btn-cancel" onclick="closeError()">关闭</button>
+                <button class="btn-ok" id="retryBtn" onclick="closeError();doRegen()" style="display:none">重试</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="image-viewer" id="imageViewer" onclick="closeImageViewer()">
+        <button class="close-btn" onclick="closeImageViewer()">×</button>
+        <img id="viewerImg" src="">
+    </div>
+
+    <div class="choice-modal" id="imageTypeChoice">
+        <div class="choice-box">
+            <div class="choice-item" onclick="selectImageType('text')">📝 纯文字图</div>
+            <div class="choice-item" onclick="selectImageType('ai')">🎨 AI生图</div>
+            <div class="choice-item" onclick="selectImageType('album')">📷 从相册上传</div>
+            <div class="choice-cancel" onclick="closeChoice('imageTypeChoice')">取消</div>
+        </div>
+    </div>
+
+<div class="choice-modal" id="uploadChoice" style="z-index:99999">
+    <div class="choice-box">
+        <div class="choice-item" onclick="doUpload('album')">📷 从相册选择</div>
+        <div class="choice-item" onclick="doUpload('url')">🔗 输入图片URL</div>
+        <div class="choice-item upload-emoji-opt" onclick="doUpload('emoji')">😀 选择Emoji</div>
+        <div class="choice-item" onclick="doUpload('remove')" style="color:#FF6B6B">🗑️ 移除</div>
+        <div class="choice-cancel" onclick="closeChoice('uploadChoice')">取消</div>
+    </div>
+</div>
+
+<div class="modal" id="urlModal" style="z-index:99999">
+        <div class="modal-box">
+            <h2>🔗 输入图片URL</h2>
+            <div class="field"><input type="text" id="urlInput" placeholder="https://..."></div>
+            <div class="modal-btns">
+                <button class="btn-cancel" onclick="closeModal('urlModal')">取消</button>
+                <button class="btn-ok" onclick="confirmUrl()">确认</button>
+            </div>
+        </div>
+    </div>
+
+<div class="modal" id="emojiModal" style="z-index:99999">
+        <div class="modal-box">
+            <h2>😀 输入Emoji</h2>
+            <div class="field"><input type="text" id="emojiInput" placeholder="😀" maxlength="2" style="font-size:32px;text-align:center"></div>
+            <div class="modal-btns">
+                <button class="btn-cancel" onclick="closeModal('emojiModal')">取消</button>
+                <button class="btn-ok" onclick="confirmEmoji()">确认</button>
+            </div>
+        </div>
+    </div>
+
+        <div class="modal" id="imgDescModal">
+        <div class="modal-box">
+            <h2 id="imgDescTitle">📝 图片描述</h2>
+            <div class="field"><textarea id="imgDescInput" placeholder="描述图片内容..."></textarea></div>
+            <div class="modal-btns">
+                <button class="btn-cancel" onclick="closeModal('imgDescModal')">取消</button>
+                <button class="btn-ok" onclick="confirmImgDesc()">确认</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="aiImgChoiceModal">
+        <div class="modal-box">
+            <h2>🎨 AI生图方式</h2>
+            <div class="field"><label>图片描述（中文）</label><textarea id="aiImgDescInput" placeholder="描述你想要的图片..."></textarea></div>
+            <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px">
+                <button class="btn-big btn-primary" onclick="aiImgUseAI()">🤖 生成英文提示词</button>
+                <button class="btn-big" style="background:var(--accent-mint);color:#2D7A5F" onclick="aiImgUseDirect()">✏️ 使用我的就好</button>
+            </div>
+            <div class="modal-btns"><button class="btn-cancel" onclick="closeModal('aiImgChoiceModal')">取消</button></div>
+        </div>
+    </div>
+
+    <div class="modal" id="aiImgModal">
+        <div class="modal-box">
+            <h2>🎨 确认提示词</h2>
+            <div class="field"><label>英文提示词</label><textarea id="aiImgPrompt"></textarea></div>
+            <div class="modal-btns">
+                <button class="btn-cancel" onclick="closeModal('aiImgModal')">取消</button>
+                <button class="btn-ok" onclick="genAiImage()">生成</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="recalledModal">
+        <div class="modal-box">
+            <h2>💬 已撤回的消息</h2>
+            <div id="recalledContent" style="background:#f8f8f8;padding:12px;border-radius:10px;font-size:14px"></div>
+            <div class="modal-btns"><button class="btn-ok" onclick="closeModal('recalledModal')">关闭</button></div>
+        </div>
+    </div>
+
+    <div class="modal" id="voiceModal">
+        <div class="modal-box">
+            <h2>🎤 语音消息</h2>
+            <div class="field"><textarea id="voiceText" placeholder="输入文字，显示为语音气泡"></textarea></div>
+            <div class="modal-btns">
+                <button class="btn-cancel" onclick="closeModal('voiceModal')">取消</button>
+                <button class="btn-ok" onclick="sendVoice()">发送</button>
+            </div>
+        </div>
+    </div>
+
+        <div class="modal" id="heartsModal">
+        <div class="modal-box hearts-box" style="position:relative;max-width:340px">
+            <div class="hearts-header-bar">
+                                <button class="hearts-close" onclick="closeModal('heartsModal')" style="display:none">×</button>
+                <button class="hearts-list-btn" onclick="openHeartsList()">📋</button>
+                <button class="hearts-edit-btn" onclick="editCurrentHeart()">✏️</button>
+            </div>
+            <div class="hearts-header">
+                <div class="hearts-avatar" id="heartsAvatar">🤖</div>
+                <div style="flex:1">
+                    <div style="font-size:16px;font-weight:600" id="heartsTitle">TA的内心</div>
+                    <div style="font-size:11px;color:var(--text-light)">此刻的想法与状态</div>
+                </div>
+            </div>
+            
+            <!-- 当前心声 -->
+            <div class="heart-current">
+                <div class="heart-section">
+                    <div class="heart-section-title">💭 心声</div>
+                    <div class="heart-section-content" id="currentHeartText">暂无心声</div>
+                </div>
+                <div class="heart-section">
+                    <div class="heart-section-title">🎭 状态</div>
+                    <div class="heart-section-content" id="currentStateText">暂无状态</div>
+                </div>
+            </div>
+            
+            <!-- 心率显示 -->
+            <div class="heart-rate-box" id="heartRateBox" style="display:none">
+                <div class="heart-rate-icon">💓</div>
+                <div class="heart-rate-value" id="heartRateValue">72</div>
+                <div class="heart-rate-unit">BPM</div>
+                <div class="heart-rate-wave" id="heartRateWave"></div>
+            </div>
+            
+            <div class="heart-time" id="currentHeartTime"></div>
+        </div>
+    </div>
+
+    <!-- 心声列表弹窗 -->
+    <div class="modal" id="heartsListModal">
+        <div class="modal-box" style="max-width:360px;max-height:80vh">
+            <h2>📋 心声历史</h2>
+            <div class="hearts-list-scroll" id="heartsListScroll"></div>
+            <div class="modal-btns">
+                <button class="btn-ok" onclick="closeModal('heartsListModal')">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="avatarSettingModal">
+        <div class="modal-box">
+            <h2>👤 聊天头像显示</h2>
+            <div style="display:flex;flex-direction:column;gap:8px">
+                <label style="display:flex;align-items:center;gap:10px;padding:12px;background:#f8f8f8;border-radius:10px;cursor:pointer">
+                    <input type="radio" name="avatarMode" value="none" style="width:18px;height:18px">
+                    <div><div style="font-weight:500">不显示头像</div><div style="font-size:11px;color:var(--text-gray)">默认样式</div></div>
+                </label>
+                <label style="display:flex;align-items:center;gap:10px;padding:12px;background:#f8f8f8;border-radius:10px;cursor:pointer">
+                    <input type="radio" name="avatarMode" value="ai" style="width:18px;height:18px">
+                    <div><div style="font-weight:500">显示AI头像</div><div style="font-size:11px;color:var(--text-gray)">AI头像在消息左侧，可双击拍一拍</div></div>
+                </label>
+                <label style="display:flex;align-items:center;gap:10px;padding:12px;background:#f8f8f8;border-radius:10px;cursor:pointer">
+                    <input type="radio" name="avatarMode" value="user" style="width:18px;height:18px">
+                    <div><div style="font-weight:500">显示我的头像</div><div style="font-size:11px;color:var(--text-gray)">我的头像在消息右侧，可双击拍一拍</div></div>
+                </label>
+                <label style="display:flex;align-items:center;gap:10px;padding:12px;background:#f8f8f8;border-radius:10px;cursor:pointer">
+                    <input type="radio" name="avatarMode" value="both" style="width:18px;height:18px">
+                    <div><div style="font-weight:500">显示两侧头像</div><div style="font-size:11px;color:var(--text-gray)">像微信一样，双方头像都显示</div></div>
+                </label>
+            </div>
+            <div class="modal-btns">
+                <button class="btn-cancel" onclick="closeModal('avatarSettingModal')">取消</button>
+                <button class="btn-ok" onclick="saveAvatarSetting()">确定</button>
+            </div>
+        </div>
+    </div>
+    <!-- 编辑心声弹窗 -->
+    <div class="modal" id="editHeartModal">
+        <div class="modal-box">
+            <h2>✏️ 编辑心声</h2>
+            <div class="field">
+                <label>💭 心声内容</label>
+                <textarea id="editHeartText" style="min-height:60px"></textarea>
+            </div>
+            <div class="field">
+                <label>🎭 状态描述</label>
+                <textarea id="editStateText" style="min-height:60px"></textarea>
+            </div>
+            <div class="field">
+                <label>💓 心率值 (40-180)</label>
+                <input type="number" id="editHeartRate" min="40" max="180" value="72">
+            </div>
+            <div class="modal-btns">
+                <button class="btn-cancel" onclick="closeModal('editHeartModal')">取消</button>
+                <button class="btn-ok" onclick="saveEditHeart()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="presetModal">
+        <div class="modal-box">
+            <h2>📁 保存预设</h2>
+            <div class="field"><input type="text" id="presetName" placeholder="预设名称"></div>
+            <div class="modal-btns">
+                <button class="btn-cancel" onclick="closeModal('presetModal')">取消</button>
+                <button class="btn-ok" onclick="savePreset()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="createAccModal">
+        <div class="modal-box">
+            <h2>👤 创建账号</h2>
+            <div style="text-align:center;margin-bottom:16px">
+                <div class="my-avatar" id="newAccAvatar" onclick="openUpload('newAccAvatar')" style="margin:0 auto;cursor:pointer">👤</div>
+                <div style="font-size:11px;color:var(--text-light);margin-top:6px">点击上传头像</div>
+            </div>
+            <div class="field"><label>人设名字（AI记忆用）*</label><input type="text" id="newAccPersona" placeholder="如：小明"></div>
+            <div class="field"><label>网名（朋友圈显示）*</label><input type="text" id="newAccNick" placeholder="如：明明"></div>
+            <div class="field"><label>人设描述</label><textarea id="newAccDesc" placeholder="你的身份、性格..."></textarea></div>
+            <div class="modal-btns">
+                <button class="btn-cancel" onclick="closeModal('createAccModal')">取消</button>
+                <button class="btn-ok" onclick="createAccount()">创建</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="editAccModal">
+        <div class="modal-box">
+            <h2>✏️ 编辑资料</h2>
+            <div style="text-align:center;margin-bottom:16px">
+                <div class="my-avatar" id="editAccAvatar" onclick="openUpload('editAccAvatar')" style="margin:0 auto;cursor:pointer">👤</div>
+            </div>
+            <div class="field"><label>人设名字*</label><input type="text" id="editAccPersona"></div>
+            <div class="field"><label>网名*</label><input type="text" id="editAccNick"></div>
+            <div class="field"><label>人设描述</label><textarea id="editAccDesc"></textarea></div>
+            <div class="modal-btns">
+                <button class="btn-cancel" onclick="closeModal('editAccModal')">取消</button>
+                <button class="btn-ok" onclick="saveAccount()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="charModal">
+        <div class="modal-box">
+            <h2 id="charModalTitle">✨ 创建角色</h2>
+            <div style="text-align:center;margin-bottom:16px">
+                <div class="contact-avatar" id="charAvatar" onclick="openUpload('charAvatar')" style="margin:0 auto;cursor:pointer;width:56px;height:56px;font-size:26px">🤖</div>
+            </div>
+            <div class="field"><label>原名（AI记忆用）*</label><input type="text" id="charRealName" placeholder="角色真名"></div>
+            <div class="field"><label>备注名（界面显示）*</label><input type="text" id="charDisplayName" placeholder="你给TA的备注"></div>
+            <div class="field"><label>人设</label><textarea id="charPersona" placeholder="性格、背景..."></textarea></div>
+            <div class="modal-btns">
+                <button class="btn-cancel" onclick="closeModal('charModal')">取消</button>
+                <button class="btn-ok" onclick="saveChar()">保存</button>
+            </div>
+            <button class="btn-danger" id="delCharBtn" onclick="delChar()" style="display:none">🗑️ 删除角色</button>
+        </div>
+    </div>
+
+    <div class="modal" id="chatEditModal">
+        <div class="modal-box">
+            <h2>✏️ 聊天编辑</h2>
+            <div style="text-align:center;margin-bottom:16px">
+                <div class="contact-avatar" id="editChatAvatar" onclick="openUpload('editChatAvatar')" style="margin:0 auto;cursor:pointer;width:56px;height:56px;font-size:26px">🤖</div>
+            </div>
+            <div class="field"><label>原名</label><input type="text" id="editChatRealName"></div>
+            <div class="field"><label>备注名</label><input type="text" id="editChatDisplayName"></div>
+            <div class="field"><label>人设</label><textarea id="editChatPersona"></textarea></div>
+            <div class="field"><label>记忆条数</label><input type="number" id="editChatMemory" value="20" min="5"></div>
+            <h3>📖 世界书</h3>
+            <div id="wbSelectList" style="max-height:100px;overflow-y:auto;border:1px solid #E8E8E8;border-radius:8px;margin-bottom:10px"></div>
+            <h3>🖼️ 聊天壁纸</h3>
+            <div style="display:flex;gap:10px;margin-bottom:10px">
+                <div id="chatWpPreview" onclick="openUpload('chatWp')" style="width:50px;height:70px;border-radius:8px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;font-size:10px;color:var(--text-light)">未设置</div>
+                <div style="flex:1;font-size:12px;color:var(--text-gray)">局部壁纸优先于全局</div>
+            </div>
+            <h3>💭 心声设置</h3>
+            <div class="s-item" style="padding:10px 0;border:none">
+                <div class="s-left"><span style="font-size:13px">注入上轮心声到对话</span></div>
+                <label class="switch"><input type="checkbox" id="injectHeartOn"><span class="slider"></span></label>
+            </div>
+            <div class="s-item" style="padding:10px 0;border:none">
+                <div class="s-left"><span style="font-size:13px">显示心率值</span></div>
+                <label class="switch"><input type="checkbox" id="showHeartRateOn"><span class="slider"></span></label>
+            </div>
+            <h3>💡 记忆设置</h3>
+            <div class="s-item" style="padding:10px 0;border:none">
+                <div class="s-left"><span style="font-size:13px">自动总结记忆</span></div>
+                <label class="switch"><input type="checkbox" id="autoSummaryOn"><span class="slider"></span></label>
+            </div>
+            <div class="field"><label>每隔多少条总结（最低20）</label><input type="number" id="summaryInterval" value="20" min="20"></div>
+<div class="field">
+<h3>📞 通话设置</h3>
+<div class="field">
+    <label>AI可见历史通话次数（0=不注入）</label>
+    <input type="number" id="callMemoryCount" value="3" min="0" max="10">
+    <div style="font-size:11px;color:var(--text-gray);margin-top:4px">AI在通话中会参考最近N次通话的内容</div>
+</div>
+    <label>📧 AI邮箱号</label>
+    <input type="text" id="editChatEmailAddress" placeholder="例如：xiaohui@huiphone.com" style="font-size:13px">
+    <div style="font-size:11px;color:var(--text-gray);margin-top:4px">填写后AI在聊天中被问到邮箱时会说出此地址，用户也可用此地址给TA发邮件</div>
+</div>
+            <button class="btn-big btn-mint" onclick="doSummaryNow()">🔄 立即总结</button>
+            <h3>📊 Token统计</h3>
+            <div class="token-stats">
+                <div class="token-row"><span>系统提示</span><span id="tkSys">0</span></div>
+                <div class="token-row"><span>角色人设</span><span id="tkChar">0</span></div>
+                <div class="token-row"><span>用户人设</span><span id="tkUser">0</span></div>
+                <div class="token-row"><span>历史消息</span><span id="tkHist">0</span></div>
+                <div class="token-row"><span>世界书</span><span id="tkWb">0</span></div>
+                <div class="token-row total"><span>总计</span><span id="tkTotal">0</span></div>
+            </div>
+         <button class="btn-big btn-primary" onclick="saveChatEdit()">💾 保存设置</button>
+<button class="btn-big" style="background:linear-gradient(135deg,#A8D8EA,#7BB4C9);color:white;margin-top:12px" onclick="closeModal('chatEditModal');setTimeout(function(){openPhone(curChar.id)},100)">📱 查看TA的手机</button>
+<button class="btn-big" style="background:linear-gradient(135deg,#A8D8EA,#7BB4C9);color:white;margin-top:12px" onclick="closeModal('chatEditModal');setTimeout(function(){openCallLogs()},100)">📋 通话记录</button>
+<button class="btn-danger" onclick="clearChat()">🗑️ 清空聊天</button>
+<div class="modal-btns"><button class="btn-cancel" onclick="closeModal('chatEditModal')">关闭</button></div>
+        </div>
+    </div>
+
+    <div class="modal" id="groupModal">
+        <div class="modal-box">
+            <h2 id="groupModalTitle">📁 创建分组</h2>
+            <div class="field"><label>分组名称</label><input type="text" id="groupName"></div>
+            <h3>选择成员</h3>
+            <div id="groupMemberList" style="max-height:180px;overflow-y:auto;border:1px solid #E8E8E8;border-radius:8px"></div>
+            <div class="modal-btns">
+                <button class="btn-cancel" onclick="closeModal('groupModal')">取消</button>
+                <button class="btn-ok" onclick="saveGroup()">保存</button>
+            </div>
+            <button class="btn-danger" id="delGroupBtn" onclick="delGroup()" style="display:none">🗑️ 删除分组</button>
+        </div>
+    </div>
+
+    <div class="modal" id="memoryModal">
+        <div class="modal-box">
+            <h2 id="memoryModalTitle">📝 添加记忆</h2>
+            <div class="field"><label>内容（约100字）</label><textarea id="memoryContent" style="min-height:100px"></textarea></div>
+            <div class="modal-btns">
+                <button class="btn-cancel" onclick="closeModal('memoryModal')">取消</button>
+                <button class="btn-ok" onclick="saveMemory()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="commentModal">
+        <div class="modal-box">
+            <h2>💬 评论</h2>
+            <div class="field"><textarea id="commentInput" placeholder="写下评论..."></textarea></div>
+            <div class="modal-btns">
+                <button class="btn-cancel" onclick="closeModal('commentModal')">取消</button>
+                <button class="btn-ok" onclick="submitComment()">发表</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="visModal">
+        <div class="modal-box">
+            <h2>👁️ 谁可以看</h2>
+            <div id="visGroupList" style="max-height:200px;overflow-y:auto"></div>
+            <div class="modal-btns">
+                <button class="btn-cancel" onclick="closeModal('visModal')">取消</button>
+                <button class="btn-ok" onclick="confirmVis()">确认</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="locModal">
+        <div class="modal-box">
+            <h2>📍 位置</h2>
+            <div class="field"><input type="text" id="locInput" placeholder="北京、咖啡店..."></div>
+            <div class="modal-btns">
+                <button class="btn-cancel" onclick="closeModal('locModal')">取消</button>
+                <button class="btn-ok" onclick="confirmLoc()">确认</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="wbModal">
+        <div class="modal-box">
+            <h2 id="wbModalTitle">📚 创建世界书</h2>
+            <div class="field"><label>名称</label><input type="text" id="wbName"></div>
+            <div class="modal-btns">
+                <button class="btn-cancel" onclick="closeModal('wbModal')">取消</button>
+                <button class="btn-ok" onclick="saveWorldbook()">保存</button>
+            </div>
+            <button class="btn-danger" id="delWbBtn" onclick="delWorldbook()" style="display:none">🗑️ 删除</button>
+        </div>
+    </div>
+
+<div class="modal" id="wbEntryModal">
+    <div class="modal-box">
+        <h2 id="wbEntryTitle">📝 添加条目</h2>
+        <div class="field"><label>条目名称</label><input type="text" id="wbEntryName"></div>
+        <div class="field"><label>关键词（逗号分隔，空则始终触发）</label><input type="text" id="wbEntryKeys" placeholder="魔法,咒语"></div>
+        <div class="field"><label>内容</label><textarea id="wbEntryContent" style="min-height:100px"></textarea></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+            <span style="font-size:13px;color:var(--text-gray)">启用此条目</span>
+            <label class="switch"><input type="checkbox" id="wbEntryEnabled" checked><span class="slider"></span></label>
+        </div>
+        <div class="modal-btns">
+            <button class="btn-cancel" onclick="closeModal('wbEntryModal')">取消</button>
+            <button class="btn-ok" onclick="saveWbEntry()">保存</button>
+        </div>
+        <button class="btn-danger" id="delWbEntryBtn" onclick="delWbEntry()" style="display:none">🗑️ 删除条目</button>
+    </div>
+</div>
+
+        <div class="modal" id="bgCharModal">
+        <div class="modal-box">
+            <h2>👥 角色后台设置</h2>
+            <p style="font-size:12px;color:var(--text-gray);margin-bottom:12px">勾选允许后台活动的角色</p>
+            <div id="bgCharList" style="max-height:250px;overflow-y:auto"></div>
+            <div class="modal-btns">
+                <button class="btn-cancel" onclick="closeModal('bgCharModal')">取消</button>
+                <button class="btn-ok" onclick="saveBgChars()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="regenModal">
+        <div class="modal-box">
+            <h2>🔄 重新生成回复</h2>
+            <div class="field">
+                <label>提示词（可选）</label>
+                <textarea id="regenPrompt" placeholder="例如：简短点、温柔点、详细点..." style="min-height:60px"></textarea>
+            </div>
+            <div style="font-size:12px;color:var(--text-gray);margin-bottom:12px">
+                💡 提示词会影响AI的回复风格。不填则直接重新生成。
+            </div>
+            <div class="modal-btns">
+                <button class="btn-cancel" onclick="closeModal('regenModal')">取消</button>
+                <button class="btn-ok" onclick="confirmRegen()">重新回复</button>
+            </div>
+        </div>
+    </div>
+
+        <div class="modal" id="editAiRoundModal">
+        <div class="modal-box" style="max-width:400px;max-height:85vh">
+            <h2>🔧 编辑本轮回复</h2>
+            <div id="editAiRoundList" style="max-height:500px;overflow-y:auto;margin-bottom:16px"></div>
+            <div class="modal-btns">
+                <button class="btn-cancel" onclick="closeModal('editAiRoundModal')">取消</button>
+                <button class="btn-ok" onclick="saveEditAiRound()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="editMsgModal">
+        <div class="modal-box">
+            <h2>✏️ 编辑消息</h2>
+            <div class="field">
+                <textarea id="editMsgText" style="min-height:100px"></textarea>
+            </div>
+            <div class="modal-btns">
+                <button class="btn-cancel" onclick="closeModal('editMsgModal')">取消</button>
+                <button class="btn-ok" onclick="saveEditMsg()">保存</button>
+            </div>
+        </div>
+    </div>
+
+<!-- HuyMap 页面 -->
+<div class="page" id="huyMapPage">
+    <div class="header mint">
+        <button class="hbtn" onclick="closeHuyMap()">‹</button>
+        <h1>🗺️ 洄也地图</h1>
+        <button class="hbtn" onclick="openMapSettings()">⚙️</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;background:linear-gradient(180deg, #f0f7f0 0%, #e8f4e8 100%)">
+        <!-- 地图选择器 -->
+        <div style="padding:12px;display:flex;gap:8px;background:white;border-bottom:1px solid #eee">
+            <select id="currentMapSelect" onchange="switchMap(this.value)" style="flex:1;padding:10px 14px;border-radius:12px;border:1px solid #ddd;font-size:14px;background:white"></select>
+            <button onclick="openCreateMap()" style="padding:10px 18px;border:none;border-radius:12px;background:linear-gradient(135deg,#81C784,#4CAF50);color:white;font-size:14px;cursor:pointer;font-weight:500">+ 新建</button>
+        </div>
+        
+        <!-- 搜索框 -->
+        <div style="padding:12px;position:relative">
+            <input type="text" id="mapSearchInput" placeholder="🔍 搜索地点..." oninput="onMapSearch(this.value)" style="width:100%;padding:12px 16px;border-radius:12px;border:1px solid #e0e0e0;font-size:14px;box-sizing:border-box;background:white">
+            <div id="mapSearchResults" class="search-results" style="position:absolute;top:100%;left:12px;right:12px;background:white;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.15);z-index:100;display:none;max-height:200px;overflow-y:auto"></div>
+        </div>
+        
+        <!-- 地图画布 -->
+        <div id="mapContainer" style="position:relative;height:280px;margin:0 12px;border-radius:16px;overflow:hidden;background:#e8f4e8;box-shadow:0 4px 12px rgba(0,0,0,0.1)">
+            <canvas id="mapCanvas" style="transform-origin:0 0"></canvas>
+            <div id="mapPlaces" style="position:absolute;top:0;left:0;transform-origin:0 0"></div>
+            <div id="mapCharMarkers" style="position:absolute;top:0;left:0;transform-origin:0 0"></div>
+        </div>
+        
+        <!-- 缩放控制 -->
+        <div style="padding:12px;display:flex;gap:8px;align-items:center;justify-content:center">
+            <button onclick="mapZoom(-0.2)" style="width:36px;height:36px;border:none;border-radius:10px;background:white;cursor:pointer;font-size:16px;box-shadow:0 2px 6px rgba(0,0,0,0.1)">➖</button>
+            <input type="range" id="mapZoomSlider" min="0.5" max="3" step="0.1" value="1" onchange="setMapZoom(this.value)" style="flex:1;max-width:150px">
+            <button onclick="mapZoom(0.2)" style="width:36px;height:36px;border:none;border-radius:10px;background:white;cursor:pointer;font-size:16px;box-shadow:0 2px 6px rgba(0,0,0,0.1)">➕</button>
+        </div>
+        
+        <!-- 操作按钮组 - 美化版 -->
+        <div style="padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <button onclick="openAddPlace()" style="padding:14px;border:none;border-radius:14px;background:linear-gradient(135deg,var(--primary),var(--primary-dark));color:white;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;font-weight:500;box-shadow:0 4px 12px rgba(184,169,201,0.4)">
+                <span style="font-size:18px">📍</span> 添加地点
+            </button>
+            <button onclick="openPlaceList()" style="padding:14px;border:none;border-radius:14px;background:white;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
+                <span style="font-size:18px">📋</span> 地点列表
+            </button>
+        </div>
+        
+        <!-- AI生成按钮 - 突出显示 -->
+        <div style="padding:0 12px 12px">
+            <button onclick="openAIPlaceGenerator()" style="width:100%;padding:16px;border:none;border-radius:14px;background:linear-gradient(135deg,#FFE066,#FFB347);color:#8B6914;font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;font-weight:600;box-shadow:0 4px 12px rgba(255,179,71,0.4)">
+                <span style="font-size:20px">🤖</span> AI智能生成地点
+            </button>
+        </div>
+        
+        <!-- 快捷操作 -->
+        <div style="padding:0 12px 20px;display:flex;gap:8px">
+            <button onclick="regenerateTerrain()" style="flex:1;padding:12px;border:none;border-radius:12px;background:#E3F2FD;color:#1565C0;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px">
+                🔄 重绘地形
+            </button>
+<button onclick="exportMap()" style="flex:1;padding:12px;border:none;border-radius:12px;background:#FFF3E0;color:#E65100;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px">
+    📤 导出
+</button>
+<button onclick="importMap()" style="flex:1;padding:12px;border:none;border-radius:12px;background:#E8F5E9;color:#2E7D32;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px">
+    📥 导入
+</button>
+<input type="file" id="mapImportInput" accept=".json" style="display:none" onchange="onMapImport(event)">
+        </div>
+    </div>
+</div>
+
+<!-- 创建地图弹窗 -->
+<div class="modal" id="createMapModal">
+    <div class="modal-box">
+        <h2>🗺️ 创建新地图</h2>
+        <div class="field"><label>地图名称</label><input type="text" id="newMapName" placeholder="如：幻想世界"></div>
+        <div class="field">
+            <label>地形种子</label>
+            <div style="display:flex;gap:8px;align-items:center">
+                <input type="number" id="newMapSeed" value="12345" oninput="previewSeed()" style="flex:1">
+                <button type="button" onclick="$('newMapSeed').value=Math.floor(Math.random()*99999);previewSeed()" style="padding:6px 12px;border:none;border-radius:6px;background:var(--primary-light);cursor:pointer">🎲 随机</button>
+            </div>
+        </div>
+        <div style="margin:10px 0;text-align:center">
+            <canvas id="seedPreviewCanvas" width="150" height="100" style="border-radius:8px;border:1px solid #eee;cursor:pointer" onclick="previewSeed()"></canvas>
+            <div style="font-size:11px;color:var(--text-light);margin-top:4px">修改种子或点随机预览地形</div>
+        </div>
+        <div class="field"><label>绑定分组（可选）</label><select id="newMapGroup"></select></div>
+        <div class="modal-btns">
+            <button class="btn-cancel" onclick="closeModal('createMapModal')">取消</button>
+            <button class="btn-ok" onclick="createMap()">创建</button>
+        </div>
+    </div>
+</div>
+
+<!-- 添加地点弹窗 -->
+<div class="modal" id="addPlaceModal">
+    <div class="modal-box">
+        <h2>📍 添加地点</h2>
+        <div class="field"><label>地点名称</label><input type="text" id="placeName" placeholder="如：魔法学院"></div>
+        <div class="field"><label>类型</label><select id="placeType"><option value="home">🏠 住宅</option><option value="cafe">☕ 咖啡店</option><option value="office">🏢 办公</option><option value="shop">🛒 商店</option><option value="park">🌳 公园</option><option value="hospital">🏥 医院</option><option value="school">🏫 学校</option><option value="entertainment">🎮 娱乐</option><option value="transport">🚇 交通</option><option value="other">📍 其他</option></select></div>
+        <div class="field"><label>坐标</label><div style="display:flex;gap:8px"><input type="number" id="placeX" placeholder="X" style="flex:1"><input type="number" id="placeY" placeholder="Y" style="flex:1"><button type="button" onclick="pickPlaceOnMap()" style="padding:8px 12px;border:none;border-radius:8px;background:var(--accent-mint);cursor:pointer">🎯 选取</button></div></div>
+        <div class="field"><label>描述（可选）</label><textarea id="placeDesc" placeholder="这个地点的描述..."></textarea></div>
+        <div class="modal-btns">
+            <button class="btn-cancel" onclick="closeModal('addPlaceModal')">取消</button>
+            <button class="btn-ok" onclick="savePlace()">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- 编辑地点弹窗 -->
+<div class="modal" id="editPlaceModal">
+    <div class="modal-box">
+        <h2>✏️ 编辑地点</h2>
+        <div class="field"><label>名称</label><input type="text" id="editPlaceName"></div>
+        <div class="field"><label>类型</label><select id="editPlaceType"><option value="home">🏠 住宅</option><option value="cafe">☕ 咖啡店</option><option value="office">🏢 办公</option><option value="shop">🛒 商店</option><option value="park">🌳 公园</option><option value="hospital">🏥 医院</option><option value="school">🏫 学校</option><option value="entertainment">🎮 娱乐</option><option value="transport">🚇 交通</option><option value="other">📍 其他</option></select></div>
+<div class="field"><label>描述</label><textarea id="editPlaceDesc"></textarea></div>
+      <div class="field"><label>备注（仅自己可见）</label><textarea id="editPlaceNote" style="min-height:50px"></textarea></div>
+        <div class="modal-btns">
+            <button class="btn-cancel" onclick="closeModal('editPlaceModal')">取消</button>
+            <button class="btn-ok" onclick="updatePlace()">保存</button>
+        </div>
+        <button class="btn-danger" onclick="deletePlace()">🗑️ 删除地点</button>
+    </div>
+</div>
+
+<!-- 地点列表弹窗 -->
+<div class="modal" id="placeListModal">
+    <div class="modal-box" style="max-height:70vh">
+        <h2>📋 地点列表</h2>
+        <div id="placeListContent" style="max-height:400px;overflow-y:auto"></div>
+        <div class="modal-btns"><button class="btn-ok" onclick="closeModal('placeListModal')">关闭</button></div>
+    </div>
+</div>
+<!-- 地点详情弹窗 -->
+<div class="modal" id="locDetailModal">
+    <div class="modal-box" style="max-width:360px">
+        <h2>📍 地点详情</h2>
+        <div id="locDetailContent"></div>
+        <div class="modal-btns">
+            <button class="btn-ok" onclick="closeModal('locDetailModal')">关闭</button>
+        </div>
+    </div>
+</div>
+
+<!-- 位置选择弹窗 -->
+<div class="modal" id="locationPickerModal">
+    <div class="modal-box" style="max-height:70vh">
+        <h2>📍 分享位置</h2>
+        <div id="locationPickerList" style="max-height:400px;overflow-y:auto"></div>
+        <div class="modal-btns">
+            <button class="btn-cancel" onclick="closeModal('locationPickerModal')">取消</button>
+        </div>
+    </div>
+</div>
+
+<!-- AI生成地点弹窗 -->
+<div class="modal" id="aiPlaceGeneratorModal">
+    <div class="modal-box" style="max-height:80vh">
+        <h2>🤖 AI生成地点</h2>
+        <div style="font-size:12px;color:var(--text-gray);margin-bottom:12px">地图：<span id="aiPlaceMapName"></span></div>
+        <div class="field">
+            <label>世界描述（可选）</label>
+            <textarea id="aiPlacePrompt" placeholder="如：这是一个蒸汽朋克世界，工业发达..." style="min-height:60px"></textarea>
+        </div>
+        <button onclick="doAIGeneratePlaces()" style="width:100%;padding:12px;border:none;border-radius:10px;background:linear-gradient(135deg,#FFE066,#FFB347);color:#8B6914;font-size:14px;cursor:pointer;margin-bottom:12px">🤖 开始生成</button>
+        <div id="aiPlaceResult" style="max-height:300px;overflow-y:auto"></div>
+        <div class="modal-btns">
+            <button class="btn-cancel" onclick="closeModal('aiPlaceGeneratorModal')">关闭</button>
+        </div>
+    </div>
+</div>
+
+<!-- 地图设置弹窗 -->
+<div class="modal" id="mapSettingsModal">
+    <div class="modal-box" style="max-height:80vh">
+        <h2>⚙️ 地图设置</h2>
+        <h3>📁 分组绑定</h3>
+        <div id="groupBindingList" style="max-height:120px;overflow-y:auto;margin-bottom:12px"></div>
+        <h3>👤 角色绑定</h3>
+        <div id="charBindingList" style="max-height:120px;overflow-y:auto;margin-bottom:12px"></div>
+        <h3>🗺️ 地图管理</h3>
+        <div id="mapManageList" style="max-height:120px;overflow-y:auto"></div>
+        <div class="modal-btns"><button class="btn-ok" onclick="closeModal('mapSettingsModal')">关闭</button></div>
+    </div>
+</div>
+
+                <div class="home" id="homeScreen">
+        <div class="home-bg" id="homeBg"></div>
+        <div class="home-scroll-area" id="homeScrollArea">
+            <div class="home-page-item">
+                <div class="clock">
+                    <div class="clock-time" id="clockTime">00:00</div>
+                    <div class="clock-date" id="clockDate">2024年1月1日</div>
+                    <div class="clock-tz" id="clockTz">UTC+8</div>
+                </div>
+                <div class="widgets">
+                    <div class="widget memo-widget" onclick="openPage('memo')">
+                        <div class="widget-header"><span>📝</span><span>备忘录</span></div>
+                        <div class="widget-content" id="memoWidget"><div class="widget-empty">暂无待办事项</div></div>
+                    </div>
+                    <div class="widget health-widget" onclick="openPage('health')">
+                        <div class="widget-header"><span>❤️</span><span>健康</span></div>
+                        <div class="widget-content"><div class="widget-empty">点击查看</div></div>
+                    </div>
+                </div>
+                <div class="apps apps-main">
+    <div class="app" onclick="openPage('chat')"><div class="app-icon chat-icon">💬</div><div class="app-name">Chat</div></div>
+    <div class="app" onclick="openPage('worldbook')"><div class="app-icon worldbook-icon">📚</div><div class="app-name">World Book</div></div>
+    <div class="app" onclick="openHuyMap()"><div class="app-icon" style="background:linear-gradient(135deg,#81C784,#4CAF50)">🗺️</div><div class="app-name">HuyMap</div></div>
+    <div class="app" onclick="openPage('settings')"><div class="app-icon settings-icon">⚙️</div><div class="app-name">Settings</div></div>
+    <div class="app" onclick="openPage('theme')"><div class="app-icon theme-icon">🎨</div><div class="app-name">Skin</div></div>
+                </div>
+            </div>
+            <div class="home-page-item">
+                <div class="apps apps-extra" style="padding-top:100px">
+                    <div class="app" onclick="toast('购物功能开发中')"><div class="app-icon" style="background:linear-gradient(135deg,#FFB6C1,#FF69B4)">🛒</div><div class="app-name">Shop</div></div>
+<div class="app" onclick="openGameHub()"><div class="app-icon" style="background:linear-gradient(135deg,#98D8C8,#6BBF9F)">🎮</div><div class="app-name">Game</div></div>
+                    <div class="app" onclick="toast('论坛功能开发中')"><div class="app-icon" style="background:linear-gradient(135deg,#DDD6F3,#B8A9C9)">💭</div><div class="app-name">Forum</div></div>
+<div class="app" onclick="openEmailPage()"><div class="app-icon" style="background:linear-gradient(135deg,#87CEEB,#4682B4)">📧</div><div class="app-name">Mail</div><div class="nav-badge" id="emailBadge" style="display:none;top:-4px;right:-4px">0</div></div>
+                    <div class="app" onclick="toast('同人文功能开发中')"><div class="app-icon" style="background:linear-gradient(135deg,#F8B4B4,#E88A8A)">📖</div><div class="app-name">Fanfic</div></div>
+                    <div class="app" onclick="openPage('tutorial')"><div class="app-icon" style="background:linear-gradient(135deg,#A8D8EA,#7BB4C9)">❓</div><div class="app-name">Help</div></div>
+                </div>
+            </div>
+        </div>
+        <div class="home-dots" style="display:none">
+            <span class="home-dot active"></span>
+            <span class="home-dot"></span>
+        </div>
+        <div class="home-dock">
+    <div class="dock-inner">
+        <div class="dock-apps">
+<div class="dock-app" onclick="openPhoneFromDock()">
+    <div class="app-icon" style="background:linear-gradient(135deg,#A8D8EA,#7BB4C9);width:48px;height:48px;font-size:20px">📱</div>
+    <div class="dock-app-name">Peek</div>
+</div>
+            <div class="dock-app" onclick="toast('AI查手机功能开发中')">
+                <div class="app-icon" style="background:linear-gradient(135deg,#B8A9C9,#9B89B4);width:48px;height:48px;font-size:20px">📲</div>
+                <div class="dock-app-name">Expose</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+    <div class="page" id="chatPage">
+        <div class="header">
+            <button class="hbtn" onclick="closePage()">←</button>
+            <h1>Chat</h1>
+            <button class="hbtn" id="importBtn" onclick="importCharCard()">📥</button>
+        </div>
+        <div class="empty-state" id="noAccView" style="display:none">
+            <div class="empty-icon">👤</div>
+            <div class="empty-title">请先创建账号</div>
+            <div class="empty-desc">创建账号后即可开始聊天</div>
+            <div style="display:flex;gap:10px">
+                <button class="empty-btn" style="background:#f0f0f0;color:var(--text-dark)" onclick="closePage()">退出</button>
+                <button class="empty-btn" onclick="openModal('createAccModal')">去创建</button>
+            </div>
+        </div>
+        <div id="chatContent" style="flex:1;display:none;flex-direction:column;overflow:hidden">
+            <div class="nav-pane active" id="contactsPane"></div>
+            <div class="nav-pane" id="momentsPane"></div>
+            <div class="nav-pane" id="myPane"></div>
+            <div class="bottom-nav">
+    <div class="nav-item active" onclick="switchNav(0)"><div class="nav-icon">💬</div><div class="nav-text">联系人</div></div>
+    <div class="nav-item" onclick="switchNav(1)"><div class="nav-icon">📷</div><div class="nav-text">朋友圈</div><div class="nav-badge" id="momentBadge" style="display:none">0</div></div>
+    <div class="nav-item" onclick="switchNav(2)"><div class="nav-icon">👤</div><div class="nav-text">我的</div></div>
+</div>
+        </div>
+    </div>
+
+    <div class="chatroom" id="chatroom">
+        <div class="cr-header">
+            <button class="back-btn" onclick="closeChat()">←</button>
+            <div class="cr-avatar" id="crAvatar" onclick="openHearts()">🤖</div>
+            <div class="cr-info"><div class="cr-name" id="crName">角色</div><div class="cr-status" id="crStatus">在线</div></div>
+            <div class="cr-btns">
+                <button class="cr-btn" onclick="openMemoryPage()">💡</button>
+                <button class="cr-btn" onclick="openChatEdit()">✏️</button>
+            </div>
+        </div>
+        <div class="messages" id="messages"></div>
+                        <div class="func-panel" id="funcPanel">
+            <div class="func-grid">
+                <div class="func-item" onclick="openImgChoice()"><div class="func-icon" style="background:var(--accent-blue)">📷</div><div class="func-name">图片</div></div>
+                <div class="func-item" onclick="openVoice()"><div class="func-icon" style="background:var(--accent-mint)">🎤</div><div class="func-name">语音</div></div>
+                <div class="func-item" id="patFuncItem" onclick="doPat()"><div class="func-icon" style="background:var(--accent-yellow)">👋</div><div class="func-name">拍一拍</div></div>
+                <div class="func-item" onclick="openRegenModal()"><div class="func-icon" style="background:var(--accent-lavender)">🔄</div><div class="func-name">重新生成</div></div>
+                <div class="func-item" onclick="openEditAiRound()"><div class="func-icon" style="background:#F8B4B4">🔧</div><div class="func-name">编辑本轮</div></div>
+                <div class="func-item" onclick="openLocationPicker()"><div class="func-icon" style="background:#98D8C8">📍</div><div class="func-name">定位</div></div>
+<div class="func-item" onclick="openTransfer()"><div class="func-icon" style="background:#A8E6CF">💸</div><div class="func-name">转账</div></div>
+                <div class="func-item" onclick="openStickerPicker()"><div class="func-icon" style="background:#FFE066">😀</div><div class="func-name">表情包</div></div>
+<div class="func-item" onclick="startCall('voice')"><div class="func-icon" style="background:#A8D8EA">📞</div><div class="func-name">语音通话</div></div>
+<div class="func-item" onclick="startCall('video')"><div class="func-icon" style="background:#DDD6F3">📹</div><div class="func-name">视频通话</div></div>
+                <div class="func-item" onclick="toast('线下模式开发中')"><div class="func-icon" style="background:#F8B4B4">🏠</div><div class="func-name">线下模式</div></div>
+            </div>
+        </div>
+        <div class="quote-preview" id="quotePreview">
+            <span class="quote-preview-text" id="quotePreviewText"></span>
+            <button class="quote-preview-close" onclick="cancelQuote()">×</button>
+        </div>
+        <div class="input-bar">
+            <button class="plus-btn" onclick="toggleFunc()">+</button>
+            <button class="wait-btn" id="waitBtn" onclick="triggerReply()">等待回复</button>
+            <textarea id="msgInput" rows="1" placeholder="输入消息..." onkeydown="onMsgKey(event)" oninput="autoGrow(this)"></textarea>
+            <button class="send-btn" onclick="sendMsg()">➤</button>
+        </div>
+        <input type="file" id="imageInput" accept="image/*" onchange="onImageSelect(event)">
+        <input type="file" id="charCardInput" accept=".json,.png" onchange="onCharCardSelect(event)">
+    </div>
+    <div class="memory-page" id="memoryPage">
+        <div class="header">
+            <button class="hbtn" onclick="closeMemoryPage()">←</button>
+            <h1 id="memoryPageTitle">记忆</h1>
+            <div style="width:34px"></div>
+        </div>
+        <div class="memory-list" id="memoryList"></div>
+        <div class="memory-footer">
+            <div class="memory-merge"><span>合并为长篇，字数：</span><input type="number" id="mergeCount" value="500" min="100"><button onclick="mergeMemories()">合并</button></div>
+            <button class="memory-add-btn" onclick="openAddMemory()">+ 手动添加记忆</button>
+        </div>
+    </div>
+
+    <div class="group-page" id="groupPage">
+        <div class="header">
+            <button class="hbtn" onclick="closeGroupPage()">←</button>
+            <h1>分组管理</h1>
+            <button class="hbtn" onclick="openCreateGroup()">+</button>
+        </div>
+        <div class="group-list" id="groupList"></div>
+    </div>
+
+    <div class="switch-account-page" id="switchAccPage">
+        <div class="header">
+            <button class="hbtn" onclick="closeSwitchAcc()">←</button>
+            <h1>选择账号</h1>
+            <div style="width:34px"></div>
+        </div>
+        <div class="account-list" id="accountList"></div>
+        <div class="account-footer">
+            <div class="account-btns" id="accBtns">
+                <button class="btn-new-acc" onclick="openModal('createAccModal')">+ 新增</button>
+                <button class="btn-edit-acc" onclick="enterEditAccMode()">编辑</button>
+                <button class="btn-confirm-acc" id="btnConfirmAcc" onclick="confirmSwitchAcc()">确认登录</button>
+                <button class="btn-cancel-acc" id="btnCancelAcc" onclick="cancelSelectAcc()">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="publish-page" id="publishPage">
+        <div class="publish-header">
+            <button class="publish-cancel" onclick="closePublish()">取消</button>
+            <div style="font-size:16px;font-weight:600">发朋友圈</div>
+            <button class="publish-submit disabled" id="publishBtn" onclick="submitMoment()">发布</button>
+        </div>
+        <div class="publish-body">
+            <textarea class="publish-textarea" id="publishText" placeholder="这一刻的想法..." oninput="checkPublish()"></textarea>
+            <div class="publish-images" id="publishImages"></div>
+            <div class="publish-options">
+                <div class="publish-option" onclick="openModal('locModal')"><span>📍 所在位置</span><span class="publish-option-value" id="pubLocVal">未填写 ›</span></div>
+                <div class="publish-option" onclick="openVisModal()"><span>👁️ 谁可以看</span><span class="publish-option-value" id="pubVisVal">公开 ›</span></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="my-moments-page" id="myMomentsPage">
+        <div class="header">
+            <button class="hbtn" onclick="closeMyMoments()">←</button>
+            <h1>我的朋友圈</h1>
+            <div style="width:34px"></div>
+        </div>
+        <div class="moment-list" id="myMomentList" style="flex:1;overflow-y:auto"></div>
+    </div>
+
+    <div class="page" id="worldbookPage">
+        <div class="header mint">
+            <button class="hbtn" onclick="closePage()">←</button>
+            <h1>World Book</h1>
+            <button class="hbtn" onclick="openCreateWb()">+</button>
+        </div>
+        <div class="s-body">
+            <div class="worldbook-list" id="wbList"></div>
+        </div>
+    </div>
+
+  <div class="wb-detail-page" id="wbDetailPage">
+    <div class="header mint">
+        <button class="hbtn" onclick="closeWbDetail()">←</button>
+        <h1 id="wbDetailTitle">世界书</h1>
+        <div style="display:flex;gap:6px">
+            <button class="hbtn" onclick="openWbImportExport()">⇅</button>
+            <button class="hbtn" onclick="openAddWbEntry()">+</button>
+        </div>
+    </div>
+    <div style="padding:10px 10px 0;display:flex;gap:8px">
+        <input id="wbSearchInput" type="text" placeholder="搜索条目…" oninput="renderWbEntries()" style="flex:1;padding:8px 12px;border:1.5px solid #E0E0E0;border-radius:10px;font-size:13px;outline:none">
+        <button onclick="toggleWbAllEnabled()" id="wbToggleAllBtn" style="padding:8px 12px;border:none;border-radius:10px;background:var(--accent-mint);color:#2D7A5F;font-size:12px;cursor:pointer;white-space:nowrap">全启用</button>
+    </div>
+    <div class="wb-entry-list" id="wbEntryList"></div>
+</div>
+
+    <div class="page" id="settingsPage">
+        <div class="header dark">
+            <button class="hbtn" onclick="closePage()">←</button>
+            <h1>Settings</h1>
+            <div style="width:34px"></div>
+        </div>
+        <div class="s-body">
+            <div class="s-title">API配置</div>
+            <div class="s-section">
+                <div class="s-item" onclick="openModal('apiModal')">
+                    <div class="s-left"><div class="s-icon" style="background:var(--accent-blue)">🔗</div><span>主API设置</span></div>
+                    <span class="s-value" id="apiStatus">未配置 ›</span>
+                </div>
+                <div class="s-item" onclick="openModal('api2Modal')">
+                    <div class="s-left"><div class="s-icon" style="background:var(--accent-mint)">🔗</div><span>副API设置</span><span onclick="event.stopPropagation();showApi2Info()" style="margin-left:6px;color:var(--accent-blue);cursor:pointer">ⓘ</span></div>
+                    <span class="s-value" id="api2Status">未配置 ›</span>
+                </div>
+            </div>
+            <div class="s-title">图片压缩</div>
+            <div class="s-section">
+                <div class="s-item">
+                    <div class="s-left"><div class="s-icon" style="background:var(--accent-pink)">📐</div><span>压缩尺寸</span></div>
+                    <select class="s-input" style="width:90px" id="imgSizeSelect" onchange="saveSettings()">
+                        <option value="728">大(728)</option>
+                        <option value="512">中(512)</option>
+                        <option value="368">小(368)</option>
+                    </select>
+                </div>
+                <div class="s-item">
+                    <div class="s-left"><div class="s-icon" style="background:var(--accent-pink)">🎚️</div><span>JPEG质量</span></div>
+                    <input type="range" id="imgQualityRange" min="0.3" max="1" step="0.1" style="width:80px" onchange="saveSettings()">
+                    <span id="imgQualityVal" style="font-size:12px;color:var(--text-gray);margin-left:6px">0.6</span>
+                </div>
+            </div>
+<div class="s-title" style="display:flex;align-items:center;gap:8px">生图<a href="https://enter.pollinations.ai/sign-in" target="_blank" style="font-size:11px;color:var(--text-gray);font-weight:400;text-decoration:none">获取Key ›</a></div>
+            <div class="s-section">
+                <div class="s-item"><div class="s-left"><div class="s-icon" style="background:var(--accent-lavender)">🎨</div><span>Pollinations生图</span></div><label class="switch"><input type="checkbox" id="polliOn" onchange="saveSettings()"><span class="slider"></span></label></div>
+                <div class="s-item polli-item" style="display:none"><div class="s-left"><div class="s-icon" style="background:var(--accent-lavender)">🔑</div><span>Key</span></div><input type="text" class="s-input" style="width:100px" id="polliKey" onchange="saveSettings()"></div>
+                <div class="s-item polli-item" style="display:none"><div class="s-left"><div class="s-icon" style="background:var(--accent-lavender)">🖼️</div><span>模型</span></div><select class="s-input" style="width:80px" id="polliModel" onchange="saveSettings()"><option value="flux">flux</option><option value="turbo">turbo</option></select></div>
+            </div>
+            <div class="s-title">聊天</div>
+            <div class="s-section">
+                <div class="s-item"><div class="s-left"><div class="s-icon" style="background:var(--accent-mint)">⚡</div><span>流式输出</span></div><label class="switch"><input type="checkbox" id="streamOn" onchange="saveSettings()"><span class="slider"></span></label></div>
+                <div class="s-item"><div class="s-left"><div class="s-icon" style="background:var(--accent-yellow)">⏰</div><span>自动计时回复</span></div><label class="switch"><input type="checkbox" id="autoReplyOn" onchange="saveSettings();updateDelayVis()"><span class="slider"></span></label></div>
+                <div class="s-item delay-item"><div class="s-left"><div class="s-icon" style="background:var(--accent-yellow)">⏱️</div><span>延迟秒数</span></div><input type="number" class="s-input" id="delayVal" value="3" min="0" onchange="saveSettings()"></div>
+                                <div class="s-item"><div class="s-left"><div class="s-icon" style="background:var(--accent-pink)">💬</div><span>分段发送</span></div><label class="switch"><input type="checkbox" id="segmentOn" onchange="saveSettings()"><span class="slider"></span></label></div>
+                <div class="s-item"><div class="s-left"><div class="s-icon" style="background:var(--accent-blue)">🕐</div><span>时间感知增强</span></div><label class="switch"><input type="checkbox" id="timeAwareOn" onchange="saveSettings()"><span class="slider"></span></label></div>
+            </div>
+            <div class="s-title">后台活动</div>
+            <div class="s-section">
+                <div class="s-item"><div class="s-left"><div class="s-icon" style="background:var(--primary)">🔄</div><span>启用后台活动</span></div><label class="switch"><input type="checkbox" id="bgOn" onchange="saveSettings();updateBgVis()"><span class="slider"></span></label></div>
+                <div class="s-item bg-item" style="display:none"><div class="s-left"><div class="s-icon" style="background:var(--primary)">⏱️</div><span>检测间隔(秒)</span></div><input type="number" class="s-input" id="bgInterval" value="120" min="30" onchange="saveSettings()"></div>
+                <div class="s-item bg-item" style="display:none"><div class="s-left"><div class="s-icon" style="background:var(--primary)">📱</div><span>允许主动私信</span></div><label class="switch"><input type="checkbox" id="bgDmOn" onchange="saveSettings()"><span class="slider"></span></label></div>
+                <div class="s-item bg-item" style="display:none"><div class="s-left"><div class="s-icon" style="background:var(--primary)">📷</div><span>允许朋友圈动作</span></div><label class="switch"><input type="checkbox" id="bgMomentOn" onchange="saveSettings()"><span class="slider"></span></label></div>
+                <!-- ✅ 修复代码 -->
+                <div class="s-item bg-item" style="display:none" onclick="openBgCharSelect()">
+    <div class="s-left">
+        <div class="s-icon" style="background:var(--primary)">👥</div>
+        <span>角色后台设置</span>
+    </div>
+    <span class="s-value">设置 ›</span>
+</div>
+            </div>
+            <div class="s-title">数据管理</div>
+            <div class="s-section">
+                <div class="s-item" onclick="openExportModal()">
+                    <div class="s-left"><div class="s-icon" style="background:var(--accent-mint)">📤</div><span>导出数据</span></div>
+                    <span class="s-value">备份 ›</span>
+                </div>
+                <div class="s-item" onclick="openImportFile()">
+                    <div class="s-left"><div class="s-icon" style="background:var(--accent-blue)">📥</div><span>导入数据</span></div>
+                    <span class="s-value">还原 ›</span>
+                </div>
+            </div>
+            <input type="file" id="importDataInput" accept=".json" style="display:none" onchange="onImportData(event)">
+        </div>
+    </div>
+</div>
+
+    <div class="modal" id="apiModal">
+        <div class="modal-box">
+            <h2>🔗 API设置</h2>
+            <div class="preset-section">
+                <div class="preset-row">
+                    <select class="preset-select" id="presetSelect" onchange="loadPreset()"><option value="">-- 选择预设 --</option></select>
+                    <button class="preset-btn save" onclick="openModal('presetModal')">💾</button>
+                    <button class="preset-btn del" onclick="delPreset()">🗑️</button>
+                </div>
+            </div>
+            <div class="field"><label>API地址</label><input type="text" id="apiUrl" placeholder="https://api.openai.com"></div>
+            <div class="field"><label>密钥</label><input type="password" id="apiKey" placeholder="sk-..."></div>
+            <button class="btn-big btn-mint" onclick="testApi()">🔗 测试连接</button>
+            <div id="testResult" style="padding:8px;border-radius:8px;font-size:12px;margin-bottom:10px;display:none"></div>
+            <div class="field"><label>模型</label><select id="modelSelect"><option value="">请先测试</option></select></div>
+            <h3>高级参数</h3>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                <div class="field"><label>温度</label><input type="number" id="apiTemp" placeholder="1" step="0.1" min="0" max="2"></div>
+                <div class="field"><label>Top P</label><input type="number" id="apiTopP" placeholder="1" step="0.1" min="0" max="1"></div>
+            </div>
+            <div class="modal-btns">
+                <button class="btn-cancel" onclick="closeModal('apiModal')">取消</button>
+                <button class="btn-ok" onclick="saveApi()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="page" id="memoPage">
+        <div class="header" style="background:linear-gradient(135deg,#FFE066,#FFB347)">
+            <button class="hbtn" onclick="closePage()">←</button>
+            <h1>备忘录</h1>
+            <button class="hbtn" onclick="openMemoSettings()">⚙️</button>
+        </div>
+        <div class="s-body" style="padding:0">
+            <!-- 日历 -->
+            <div class="memo-calendar">
+                <div class="memo-cal-header">
+                    <button class="memo-cal-btn" onclick="prevMonth()">‹</button>
+                    <span id="memoCalTitle">2024年1月</span>
+                    <button class="memo-cal-btn" onclick="nextMonth()">›</button>
+                </div>
+                <div class="memo-cal-weekdays">
+                    <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
+                </div>
+                <div class="memo-cal-days" id="memoCalDays"></div>
+            </div>
+            
+            <!-- 当日备忘 -->
+            <div class="memo-day-section">
+                <div class="memo-day-header">
+                    <span id="memoSelectedDate">今天的备忘</span>
+                    <button class="memo-add-btn" id="memoAddBtn" onclick="openAddMemo()">+ 添加</button>
+                </div>
+                <div class="memo-list" id="memoList"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="page" id="healthPage">
+        <div class="header" style="background:linear-gradient(135deg,#FF6B6B,#EE5A5A)">
+            <button class="hbtn" onclick="closePage()">←</button>
+            <h1>健康</h1>
+            <div style="width:34px"></div>
+        </div>
+        <div class="s-body" style="text-align:center;padding:40px">
+            <div class="empty-icon">❤️</div>
+            <div class="empty-title">健康中心</div>
+            <div class="empty-desc">功能开发中，敬请期待...</div>
+        </div>
+    </div>
+<!-- 添加备忘弹窗 -->
+<div class="modal" id="addMemoModal">
+    <div class="modal-box">
+        <h2>📝 添加备忘</h2>
+        <div class="field">
+            <input type="text" id="memoContent" placeholder="输入备忘内容..." style="font-size:15px">
+        </div>
+        <!-- 优先级 -->
+        <div class="field">
+            <label style="margin-bottom:8px;display:block">优先级</label>
+            <div style="display:flex;gap:10px">
+                <div id="memoPri_high" onclick="setMemoPriority('high')" data-sel="0"
+                    style="flex:1;text-align:center;padding:8px 0;border-radius:10px;background:#FF6B6B22;color:#FF6B6B;font-size:13px;font-weight:600;cursor:pointer;opacity:0.35;transition:all 0.15s">
+                    🔴 高
+                </div>
+                <div id="memoPri_mid" onclick="setMemoPriority('mid')" data-sel="1"
+                    style="flex:1;text-align:center;padding:8px 0;border-radius:10px;background:#FFB34722;color:#FFB347;font-size:13px;font-weight:600;cursor:pointer;opacity:1;transition:all 0.15s">
+                    🟡 中
+                </div>
+                <div id="memoPri_low" onclick="setMemoPriority('low')" data-sel="0"
+                    style="flex:1;text-align:center;padding:8px 0;border-radius:10px;background:#A8D8EA22;color:#A8D8EA;font-size:13px;font-weight:600;cursor:pointer;opacity:0.35;transition:all 0.15s">
+                    🔵 低
+                </div>
+            </div>
+        </div>
+        <!-- 主要事项 -->
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-top:1px solid #f0f0f0;margin-top:4px">
+            <span style="font-size:14px;color:var(--text-dark)">⭐ 标记为主要事项</span>
+            <label class="switch"><input type="checkbox" id="memoStarCheck"><span class="slider"></span></label>
+        </div>
+        <div class="modal-btns" style="margin-top:12px">
+            <button class="btn-cancel" onclick="closeModal('addMemoModal')">取消</button>
+            <button class="btn-ok" onclick="saveMemoItem()">添加</button>
+               </div>
+    </div>
+</div>
+
+<!-- 编辑备忘弹窗 -->
+<div class="modal" id="editMemoModal">
+    <div class="modal-box">
+        <h2>✏️ 编辑备忘</h2>
+        <div class="field">
+            <input type="text" id="editMemoContent" placeholder="备忘内容..." style="font-size:15px">
+        </div>
+        <!-- 优先级 -->
+        <div class="field">
+            <label style="margin-bottom:8px;display:block">优先级</label>
+            <div style="display:flex;gap:10px">
+                <div id="editMemoPri_high" onclick="setEditMemoPriority('high')" data-sel="0"
+                    style="flex:1;text-align:center;padding:8px 0;border-radius:10px;background:#FF6B6B22;color:#FF6B6B;font-size:13px;font-weight:600;cursor:pointer;opacity:0.35;transition:all 0.15s">
+                    🔴 高
+                </div>
+                <div id="editMemoPri_mid" onclick="setEditMemoPriority('mid')" data-sel="1"
+                    style="flex:1;text-align:center;padding:8px 0;border-radius:10px;background:#FFB34722;color:#FFB347;font-size:13px;font-weight:600;cursor:pointer;opacity:1;transition:all 0.15s">
+                    🟡 中
+                </div>
+                <div id="editMemoPri_low" onclick="setEditMemoPriority('low')" data-sel="0"
+                    style="flex:1;text-align:center;padding:8px 0;border-radius:10px;background:#A8D8EA22;color:#A8D8EA;font-size:13px;font-weight:600;cursor:pointer;opacity:0.35;transition:all 0.15s">
+                    🔵 低
+                </div>
+            </div>
+        </div>
+        <!-- 主要事项 -->
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-top:1px solid #f0f0f0;margin-top:4px">
+            <span style="font-size:14px;color:var(--text-dark)">⭐ 标记为主要事项</span>
+            <label class="switch"><input type="checkbox" id="editMemoStarCheck"><span class="slider"></span></label>
+        </div>
+        <div class="modal-btns" style="margin-top:12px">
+            <button class="btn-cancel" onclick="closeModal('editMemoModal')">取消</button>
+            <button class="btn-ok" onclick="saveEditMemoItem()">保存</button>
+        </div>
+    </div>
+</div>
+
+    <div class="modal" id="memoSettingsModal">
+        <div class="modal-box">
+            <h2>⚙️ 备忘录设置</h2>
+            <div class="s-item" style="padding:12px 0;border:none">
+                <div class="s-left"><span style="font-size:14px">让AI知道今天的备忘</span></div>
+                <label class="switch"><input type="checkbox" id="memoAiAwareOn"><span class="slider"></span></label>
+            </div>
+            <div class="field">
+                <label>AI可见的备忘条数（0=全部）</label>
+                <input type="number" id="memoAiCount" min="0" max="10" value="3">
+            </div>
+            <div class="modal-btns">
+                <button class="btn-cancel" onclick="closeModal('memoSettingsModal')">取消</button>
+                <button class="btn-ok" onclick="saveMemoSettings()">保存</button>
+            </div>
+        </div>
+    </div>
+    <div class="page" id="tutorialPage">
+    <div class="header" style="background:linear-gradient(135deg,#A8D8EA,#7BB4C9)">
+        <button class="hbtn" onclick="closePage()">←</button>
+        <h1>Tutorial</h1>
+        <div style="width:34px"></div>
+    </div>
+    <div class="s-body" style="padding:16px 16px 40px">
+
+        <!-- 生图配置 -->
+        <div class="s-title">🎨 生图配置（Pollinations）</div>
+        <div class="s-section" style="padding:14px 16px;line-height:1.9;font-size:14px;color:var(--text-dark)">
+            <p style="margin:0 0 10px">Pollinations 是本应用内置的 AI 生图服务，开启后聊天中的 AI 图片、查手机里的淘宝商品图、朋友圈图片都会自动生成。</p>
+            <p style="margin:0 0 6px;font-weight:600">① 获取 Key</p>
+            <p style="margin:0 0 10px">进入 <a href="https://enter.pollinations.ai/sign-in" target="_blank" style="color:var(--primary-dark);text-decoration:none">enter.pollinations.ai/sign-in</a> 注册账号，登录后即可获得你的 API Key。没有 Key 无法使用。</p>
+            <p style="margin:0 0 6px;font-weight:600">② 在设置里填写</p>
+            <p style="margin:0 0 10px">进入 Settings → 生图，打开「Pollinations生图」开关，将 Key 填入「Key」输入框，模型选择 flux（质量更好）或 turbo（速度更快）。</p>
+            <p style="margin:0 0 6px;font-weight:600">③ 在哪里能看到效果</p>
+            <p style="margin:0">开启后，聊天中 AI 回复里的 &lt;IMAGE&gt; 标签会自动生成图片；查手机→淘宝，点击商品详情时会生成商品图；查手机→微信→朋友圈，图片也会自动生成。</p>
+        </div>
+
+        <!-- 查手机 -->
+        <div class="s-title" style="margin-top:16px">📱 查手机功能</div>
+        <div class="s-section" style="padding:14px 16px;line-height:1.9;font-size:14px;color:var(--text-dark)">
+            <p style="margin:0 0 10px">查手机可以让你查看角色的手机内容，包括微信、支付宝、淘宝、地图、浏览器、贴吧、邮箱、网易云、设置，以及 AI 动态生成的第二页应用。</p>
+            <p style="margin:0 0 6px;font-weight:600">① 如何打开</p>
+            <p style="margin:0 0 10px">点击主界面底部 Dock 栏的「📱 Peek」按钮，如果只有一个角色会直接打开，多个角色会弹出选择。</p>
+            <p style="margin:0 0 6px;font-weight:600">② 内容不是即时显示的</p>
+            <p style="margin:0 0 10px">每个应用的内容都需要点击进入后手动生成，或者点击顶部「📦 批量生成」一次性生成多个。生成需要调用 AI，第一次会慢一点，请耐心等待。生成过的内容会缓存，下次打开不需要重新生成。</p>
+            <p style="margin:0 0 6px;font-weight:600">③ 小组件</p>
+            <p style="margin:0 0 10px">第一页桌面顶部可以添加小组件（天气、日历、步数等）。点击「✏️ 编辑桌面」进入编辑模式，点击「➕ 添加小组件」选择类型。添加后点击小组件才会生成内容。</p>
+            <p style="margin:0 0 6px;font-weight:600">④ 第二页 AI 动态应用</p>
+            <p style="margin:0 0 10px">向左滑动进入第二页，首次进入会看到一个「✨ 待生成」图标，点击后 AI 会根据角色人设生成 1-9 个专属应用。生成中图标显示 ⏳，失败显示 ❌ 可点击重试。</p>
+            <p style="margin:0 0 6px;font-weight:600">⑤ 浏览器批量生成</p>
+            <p style="margin:0 0 10px">打开浏览器应用，在历史记录或书签页面右上角点击「多选」，勾选想要生成的页面，点击「批量生成」，一次 AI 调用即可生成全部页面，比逐个生成节省额度。</p>
+            <p style="margin:0 0 6px;font-weight:600">⑥ 网易云可以真实播放</p>
+            <p style="margin:0;margin-bottom:10px">网易云应用会搜索真实歌曲并播放，需要网络连接，部分歌曲因版权可能无法播放。支持上传本地歌词文件（.lrc / .srt / .vtt / .txt）。</p>
+            <p style="margin:0 0 6px;font-weight:600">⑦ 内容与角色挂钩</p>
+            <p style="margin:0">生成的内容基于角色人设和最近 50 条聊天记录，人设越详细、聊天越多，内容越贴合角色。建议先和角色多聊几句再使用查手机功能。</p>
+        </div>
+
+        <!-- 报错处理 -->
+        <div class="s-title" style="margin-top:16px">❗ 常见报错处理</div>
+        <div class="s-section" style="padding:14px 16px;line-height:1.9;font-size:14px;color:var(--text-dark)">
+            <p style="margin:0 0 6px;font-weight:600">AI 没有回复 / 一直转圈</p>
+            <p style="margin:0 0 12px">检查 Settings → API配置，确认 API 地址和 Key 是否填写正确。可以点击「🔗 测试连接」验证。地址格式一般是 <span style="font-family:monospace;background:#f5f5f5;padding:2px 6px;border-radius:4px">https://xxx.com</span>，不需要带 /v1。</p>
+            <p style="margin:0 0 6px;font-weight:600">图片生成失败 / 图片不显示</p>
+            <p style="margin:0 0 12px">确认生图开关已开启，且网络可以访问 gen.pollinations.ai。部分网络环境需要代理。图片加载失败会自动隐藏，不影响其他功能。</p>
+            <p style="margin:0 0 6px;font-weight:600">查手机生成失败</p>
+            <p style="margin:0 0 12px">查手机生成失败通常是 API 超时或返回内容不符合 JSON 格式。点击页面上的「重试」按钮即可。如果反复失败，尝试换一个支持较长输出的模型。</p>
+            <p style="margin:0 0 6px;font-weight:600">屏幕底部出现红色错误条</p>
+            <p style="margin:0 0 12px">这是 JS 报错提示。截图发给开发者，或者打开 Skin → 调试控制台，查看详细错误信息。</p>
+            <p style="margin:0 0 6px;font-weight:600">数据丢失</p>
+            <p style="margin:0">本应用数据存储在浏览器的 IndexedDB 中，清除浏览器数据或换浏览器会导致数据丢失。建议定期用角色卡导出功能备份重要角色。</p>
+        </div>
+
+    </div>
+</div>
+
+    <div class="modal" id="api2Modal">
+        <div class="modal-box">
+            <h2>🔗 副API设置</h2>
+            <p style="font-size:12px;color:var(--text-gray);margin-bottom:12px;background:#f5f5f5;padding:10px;border-radius:8px">副API用于：图片识别、生成记忆、总结记忆等任务。<br>如果不填写，将使用主API。<br>建议使用支持Vision的模型。</p>
+            <div class="field"><label>API地址</label><input type="text" id="api2Url" placeholder="https://api.openai.com"></div>
+            <div class="field"><label>密钥</label><input type="password" id="api2Key" placeholder="sk-..."></div>
+            <button class="btn-big btn-mint" onclick="testApi2()">🔗 测试连接</button>
+            <div id="test2Result" style="padding:8px;border-radius:8px;font-size:12px;margin-bottom:10px;display:none"></div>
+            <div class="field"><label>模型</label><select id="model2Select"><option value="">请先测试</option></select></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                <div class="field"><label>温度</label><input type="number" id="api2Temp" placeholder="0.7" step="0.1" min="0" max="2"></div>
+                <div class="field"><label>Top P</label><input type="number" id="api2TopP" placeholder="1" step="0.1" min="0" max="1"></div>
+            </div>
+            <div class="modal-btns">
+                <button class="btn-cancel" onclick="closeModal('api2Modal')">取消</button>
+                <button class="btn-ok" onclick="saveApi2()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="page" id="themePage">
+        <div class="header pink">
+            <button class="hbtn" onclick="closePage()">←</button>
+            <h1>skin</h1>
+            <div style="width:34px"></div>
+        </div>
+        <div class="s-body">
+            <div class="s-title">时区</div>
+            <div class="s-section">
+                <div style="padding:12px">
+                                        <select id="tzSelect" onchange="saveTz()" style="width:100%;padding:10px;border:1px solid #E8E8E8;border-radius:10px;font-size:14px">
+                        <option value="-12">UTC-12 贝克岛</option>
+                        <option value="-11">UTC-11 萨摩亚</option>
+                        <option value="-10">UTC-10 夏威夷</option>
+                        <option value="-9">UTC-9 阿拉斯加</option>
+                        <option value="-8">UTC-8 洛杉矶</option>
+                        <option value="-7">UTC-7 丹佛</option>
+                        <option value="-6">UTC-6 芝加哥</option>
+                        <option value="-5">UTC-5 纽约</option>
+                        <option value="-4">UTC-4 圣地亚哥</option>
+                        <option value="-3">UTC-3 布宜诺斯艾利斯</option>
+                        <option value="-2">UTC-2 大西洋中部</option>
+                        <option value="-1">UTC-1 亚速尔群岛</option>
+                        <option value="0">UTC+0 伦敦</option>
+                        <option value="1">UTC+1 巴黎</option>
+                        <option value="2">UTC+2 开罗</option>
+                        <option value="3">UTC+3 莫斯科</option>
+                        <option value="4">UTC+4 迪拜</option>
+                        <option value="5">UTC+5 卡拉奇</option>
+                        <option value="5.5">UTC+5:30 新德里</option>
+                        <option value="6">UTC+6 达卡</option>
+                        <option value="7">UTC+7 曼谷</option>
+                        <option value="8" selected>UTC+8 北京/香港/台北</option>
+                        <option value="9">UTC+9 东京/首尔</option>
+                        <option value="10">UTC+10 悉尼</option>
+                        <option value="11">UTC+11 所罗门群岛</option>
+                        <option value="12">UTC+12 奥克兰</option>
+                    </select>
+                </div>
+            </div>
+            <div class="s-title">主页壁纸</div>
+            <div class="s-section">
+                <div style="padding:12px;display:flex;gap:10px;align-items:center">
+                    <div id="homeWpPreview" onclick="openUpload('homeWp')" style="width:50px;height:70px;border-radius:8px;background:#f0f0f0;cursor:pointer;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text-light)">点击设置</div>
+                    <span style="font-size:12px;color:var(--text-gray)">自定义主页背景</span>
+                </div>
+            </div>
+            <div class="s-title">全局聊天壁纸</div>
+            <div class="s-section">
+                <div style="padding:12px;display:flex;gap:10px;align-items:center">
+                    <div id="globalWpPreview" onclick="openUpload('globalWp')" style="width:50px;height:70px;border-radius:8px;background:#f0f0f0;cursor:pointer;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text-light)">点击设置</div>
+                    <span style="font-size:12px;color:var(--text-gray)">所有聊天默认壁纸</span>
+                </div>
+            </div>
+<div class="s-title">开发者</div>
+<div class="s-section">
+    <div class="s-item">
+        <div class="s-left">
+            <div class="s-icon" style="background:#111">🛠️</div>
+            <span>调试控制台</span>
+        </div>
+        <label class="switch">
+            <input type="checkbox" id="debugConsoleOn" onchange="saveThemeSettings();dbgInit()">
+            <span class="slider"></span>
+        </label>
+    </div>
+</div>
+            <div class="s-title">聊天显示</div>
+            <div class="s-section">
+                <div class="s-item" onclick="openAvatarSetting()">
+                    <div class="s-left"><div class="s-icon" style="background:var(--accent-pink)">👤</div><span>聊天头像显示</span></div>
+                    <span class="s-value" id="avatarModeVal">不显示 ›</span>
+                </div>
+                <div class="s-item">
+                    <div class="s-left"><div class="s-icon" style="background:var(--accent-yellow)">💬</div><span>显示功能提示</span></div>
+                    <label class="switch"><input type="checkbox" id="showFuncTipsOn" checked onchange="saveThemeSettings()"><span class="slider"></span></label>
+                </div>
+            </div>
+            <div class="s-title">主题色</div>
+            <div class="s-section"><div class="color-grid" id="colorGrid"></div></div>
+        </div>
+    </div>
+
+<!-- 表情包选择弹窗 -->
+<div class="modal" id="stickerPickerModal">
+    <div class="modal-box" style="max-width:360px;max-height:70vh">
+        <h2>😀 选择表情包</h2>
+        <div id="stickerPickerTabs" style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap"></div>
+        <div id="stickerPickerGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;max-height:300px;overflow-y:auto"></div>
+        <div class="modal-btns"><button class="btn-cancel" onclick="closeModal('stickerPickerModal')">取消</button></div>
+    </div>
+</div>
+
+<!-- 我的表情包页面 -->
+<div class="page" id="myStickersPage">
+    <div class="header" style="background:linear-gradient(135deg,#FFE066,#FFB347)">
+        <button class="hbtn" onclick="closeMyStickersPage()">←</button>
+        <h1>我的表情包</h1>
+        <button class="hbtn" onclick="openStickerSettings()">⚙️</button>
+    </div>
+    <div class="s-body" style="padding:10px;padding-bottom:80px">
+        <div id="stickerGroupTabs" style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;padding-bottom:10px;border-bottom:1px solid #eee"></div>
+        <div id="stickerGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px"></div>
+    </div>
+    <div style="position:fixed;bottom:0;left:0;right:0;background:white;padding:12px;border-top:1px solid #eee;display:flex;gap:10px">
+        <button class="btn-big btn-primary" style="flex:1;margin:0" onclick="openAddSticker()">+ 添加表情包</button>
+        <button class="btn-big" style="flex:1;margin:0;background:#f0f0f0" onclick="openBatchDeleteSticker()">批量管理</button>
+    </div>
+</div>
+
+<!-- 添加表情包弹窗 -->
+<div class="modal" id="addStickerModal">
+    <div class="modal-box">
+        <h2>➕ 添加表情包</h2>
+        <div class="field"><label>图片URL *</label><input type="text" id="stickerUrl" placeholder="https://example.com/sticker.gif"></div>
+        <div class="field"><label>表情含义/描述 *</label><input type="text" id="stickerDesc" placeholder="如：开心、无语、生气..."></div>
+        <div class="field"><label>所属分组</label><select id="stickerGroupSelect"></select></div>
+        <div id="stickerPreview" style="text-align:center;margin:12px 0"></div>
+        <div class="modal-btns">
+            <button class="btn-cancel" onclick="closeModal('addStickerModal')">取消</button>
+            <button class="btn-ok" onclick="saveSticker()">添加</button>
+        </div>
+    </div>
+</div>
+
+<!-- 编辑表情包弹窗 -->
+<div class="modal" id="editStickerModal">
+    <div class="modal-box">
+        <h2>✏️ 编辑表情包</h2>
+        <div id="editStickerPreview" style="text-align:center;margin-bottom:12px"></div>
+        <div class="field"><label>图片URL</label><input type="text" id="editStickerUrl"></div>
+        <div class="field"><label>表情含义/描述</label><input type="text" id="editStickerDesc"></div>
+        <div class="field"><label>所属分组</label><select id="editStickerGroupSelect"></select></div>
+        <div class="modal-btns">
+            <button class="btn-cancel" onclick="closeModal('editStickerModal')">取消</button>
+            <button class="btn-ok" onclick="updateSticker()">保存</button>
+        </div>
+        <button class="btn-danger" onclick="deleteEditingSticker()">🗑️ 删除此表情包</button>
+    </div>
+</div>
+
+<!-- 表情包分组管理弹窗 -->
+<div class="modal" id="stickerGroupModal">
+    <div class="modal-box">
+        <h2 id="stickerGroupModalTitle">📁 创建分组</h2>
+        <div class="field"><label>分组名称</label><input type="text" id="stickerGroupName" placeholder="如：日常、搞笑、卖萌..."></div>
+        <div class="modal-btns">
+            <button class="btn-cancel" onclick="closeModal('stickerGroupModal')">取消</button>
+            <button class="btn-ok" onclick="saveStickerGroup()">保存</button>
+        </div>
+        <button class="btn-danger" id="delStickerGroupBtn" style="display:none" onclick="deleteStickerGroup()">🗑️ 删除分组</button>
+    </div>
+</div>
+
+<!-- 表情包设置弹窗 -->
+<div class="modal" id="stickerSettingsModal">
+    <div class="modal-box" style="max-height:80vh;overflow-y:auto">
+        <h2>⚙️ 表情包设置</h2>
+        <h3 style="margin-top:16px">🤖 AI同步设置</h3>
+        <div class="s-item" style="padding:12px 0;border:none">
+            <div class="s-left"><span style="font-size:14px">允许AI发送表情包</span></div>
+            <label class="switch"><input type="checkbox" id="aiStickerEnabled" onchange="toggleAiStickerEnabled()"><span class="slider"></span></label>
+        </div>
+        <div id="charStickerSettings" style="display:none">
+            <h3>👥 角色表情包权限</h3>
+            <p style="font-size:12px;color:var(--text-gray);margin-bottom:10px">为每个角色设置可用的表情包分组</p>
+            <div id="charStickerList"></div>
+        </div>
+        <h3 style="margin-top:16px">📁 分组管理</h3>
+        <div id="stickerGroupList" style="margin-bottom:12px"></div>
+        <button class="btn-big btn-mint" onclick="openCreateStickerGroup()">+ 新建分组</button>
+        <h3 style="margin-top:16px">📦 导入导出</h3>
+        <div style="display:flex;gap:10px">
+            <button class="btn-big" style="flex:1;background:#E3F2FD;color:#1565C0" onclick="exportStickers()">📤 导出</button>
+            <button class="btn-big" style="flex:1;background:#E8F5E9;color:#2E7D32" onclick="importStickers()">📥 导入</button>
+        </div>
+        <input type="file" id="stickerImportInput" accept=".json" style="display:none" onchange="onStickerImport(event)">
+        <div class="modal-btns" style="margin-top:20px"><button class="btn-ok" onclick="closeModal('stickerSettingsModal')">完成</button></div>
+    </div>
+</div>
+
+<!-- 批量删除表情包弹窗 -->
+<div class="modal" id="batchDeleteStickerModal">
+    <div class="modal-box" style="max-height:70vh">
+        <h2>🗑️ 批量删除</h2>
+        <p style="font-size:12px;color:var(--text-gray);margin-bottom:12px">勾选要删除的表情包</p>
+        <div id="batchStickerGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;max-height:300px;overflow-y:auto"></div>
+        <div class="modal-btns">
+            <button class="btn-cancel" onclick="closeModal('batchDeleteStickerModal')">取消</button>
+            <button class="btn-ok" style="background:#FF6B6B" onclick="confirmBatchDelete()">删除选中</button>
+        </div>
+    </div>
+</div>
+
+<!-- 角色表情包分组设置弹窗 -->
+<div class="modal" id="charStickerGroupModal">
+    <div class="modal-box">
+        <h2 id="charStickerGroupTitle">设置可用分组</h2>
+        <div id="charStickerGroupList" style="max-height:250px;overflow-y:auto"></div>
+        <div class="modal-btns">
+            <button class="btn-cancel" onclick="closeModal('charStickerGroupModal')">取消</button>
+            <button class="btn-ok" onclick="saveCharStickerGroups()">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- 转账页面 -->
+<div class="full-page" id="transferPage">
+    <div class="full-page-header">
+        <button class="back-btn" onclick="closeTransfer()">←</button>
+        <div class="full-page-title">转账</div>
+        <div style="width:40px"></div>
+    </div>
+    <div style="padding:24px 20px 0;text-align:center">
+        <div style="font-size:15px;color:#555;margin-bottom:20px">转账给 <span id="transferTarget" style="font-weight:600"></span></div>
+        <div style="font-size:13px;color:#999;margin-bottom:6px">转账金额</div>
+        <div style="font-size:42px;font-weight:700;color:#222;margin-bottom:20px">¥<span id="transferAmount">0.00</span></div>
+        <input id="transferRemark" placeholder="添加备注（可选）" style="width:100%;box-sizing:border-box;padding:12px 16px;border:1px solid #eee;border-radius:12px;font-size:14px;outline:none;background:white">
+    </div>
+    <div style="flex:1"></div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:#e0e0e0;border-top:1px solid #e0e0e0">
+        <button class="wallet-key" onclick="walletKeyPress('1')">1</button>
+        <button class="wallet-key" onclick="walletKeyPress('2')">2</button>
+        <button class="wallet-key" onclick="walletKeyPress('3')">3</button>
+        <button class="wallet-key" onclick="walletKeyPress('4')">4</button>
+        <button class="wallet-key" onclick="walletKeyPress('5')">5</button>
+        <button class="wallet-key" onclick="walletKeyPress('6')">6</button>
+        <button class="wallet-key" onclick="walletKeyPress('7')">7</button>
+        <button class="wallet-key" onclick="walletKeyPress('8')">8</button>
+        <button class="wallet-key" onclick="walletKeyPress('9')">9</button>
+        <button class="wallet-key" onclick="walletKeyPress('.')">.</button>
+        <button class="wallet-key" onclick="walletKeyPress('0')">0</button>
+        <button class="wallet-key" onclick="walletKeyPress('⌫')" style="font-size:18px">⌫</button>
+    </div>
+    <div style="padding:12px 20px 20px;background:#f5f5f5">
+        <button onclick="doTransfer()" style="width:100%;padding:16px;border:none;border-radius:14px;background:#4CAF50;color:white;font-size:17px;font-weight:600;cursor:pointer">转账</button>
+    </div>
+</div>
+
+<!-- 钱包页面 -->
+<div class="full-page" id="walletPage">
+    <div class="full-page-header">
+        <button class="back-btn" onclick="closeWallet()">←</button>
+        <div class="full-page-title">我的钱包</div>
+        <button onclick="openBills()" style="background:none;border:none;font-size:14px;color:#4CAF50;cursor:pointer;padding:4px 8px">账单</button>
+    </div>
+    <div style="text-align:center;padding:50px 20px 40px">
+        <div style="width:72px;height:72px;margin:0 auto 16px;border-radius:50%;background:linear-gradient(135deg,#FFD700,#FFA500);display:flex;align-items:center;justify-content:center;font-size:36px;box-shadow:0 4px 16px rgba(255,165,0,0.4)">💰</div>
+        <div style="font-size:13px;color:#999;margin-bottom:10px">我的余额</div>
+<div style="font-size:40px;font-weight:700;color:#222" id="walletBalance">¥0.00</div>
+    </div>
+    <div style="display:flex;gap:16px;padding:0 24px">
+        <button onclick="openRecharge()" style="flex:1;padding:16px;border:none;border-radius:14px;background:#E8F5E9;color:#2E7D32;font-size:16px;font-weight:600;cursor:pointer">充值</button>
+        <button onclick="openWithdraw()" style="flex:1;padding:16px;border:none;border-radius:14px;background:#FFF3E0;color:#E65100;font-size:16px;font-weight:600;cursor:pointer">提款</button>
+    </div>
+</div>
+
+<!-- 账单页面 -->
+<div class="full-page" id="billsPage">
+    <div class="full-page-header">
+        <button class="back-btn" onclick="closeBills()">←</button>
+        <div class="full-page-title">账单记录</div>
+        <div style="width:40px"></div>
+    </div>
+    <div id="billsContent" style="padding:0 16px 20px;overflow-y:auto;flex:1;background:#f5f5f5"></div>
+</div>
+
+<!-- 充值/提款弹窗 -->
+<div class="modal" id="rechargeModal">
+    <div class="modal-box">
+        <h2 id="rechargeModalTitle">充值</h2>
+        <div style="text-align:center;margin-bottom:16px">
+            <div style="font-size:13px;color:#999;margin-bottom:6px">金额</div>
+            <div style="font-size:38px;font-weight:700;color:#222">¥<span id="rechargeAmount">0.00</span></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:#e0e0e0;border-radius:12px;overflow:hidden;margin-bottom:12px">
+            <button class="wallet-key" onclick="walletKeyPress('1')">1</button>
+            <button class="wallet-key" onclick="walletKeyPress('2')">2</button>
+            <button class="wallet-key" onclick="walletKeyPress('3')">3</button>
+            <button class="wallet-key" onclick="walletKeyPress('4')">4</button>
+            <button class="wallet-key" onclick="walletKeyPress('5')">5</button>
+            <button class="wallet-key" onclick="walletKeyPress('6')">6</button>
+            <button class="wallet-key" onclick="walletKeyPress('7')">7</button>
+            <button class="wallet-key" onclick="walletKeyPress('8')">8</button>
+            <button class="wallet-key" onclick="walletKeyPress('9')">9</button>
+            <button class="wallet-key" onclick="walletKeyPress('.')">.</button>
+            <button class="wallet-key" onclick="walletKeyPress('0')">0</button>
+            <button class="wallet-key" onclick="walletKeyPress('⌫')" style="font-size:18px">⌫</button>
+        </div>
+        <input id="rechargeRemark" placeholder="备注（可选）" style="width:100%;box-sizing:border-box;padding:10px 14px;border:1px solid #eee;border-radius:10px;font-size:14px;margin-bottom:12px;outline:none">
+        <div class="modal-btns">
+            <button class="btn-cancel" onclick="closeModal('rechargeModal')">取消</button>
+            <button class="btn-ok" onclick="confirmRecharge()">确认</button>
+        </div>
+    </div>
+</div>
+
+<!-- 转账详情弹窗 -->
+<div class="modal" id="transferDetailModal">
+    <div class="modal-box">
+        <div id="transferDetailContent"></div>
+        <div class="modal-btns">
+            <button class="btn-ok" onclick="closeModal('transferDetailModal')">关闭</button>
+        </div>
+    </div>
+</div><script>
+window.onerror = function(msg, src, line, col, err) {
+    var d = document.getElementById('__errbox');
+    if (!d) {
+        d = document.createElement('div');
+        d.id = '__errbox';
+        d.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#FF3333;color:white;padding:10px;font-size:12px;z-index:99999;max-height:40vh;overflow-y:auto;word-break:break-all';
+        document.body.appendChild(d);
+    }
+    d.innerHTML += '<div style="border-bottom:1px solid rgba(255,255,255,0.3);padding:4px 0"><b>错误：</b>' + msg + '<br><b>文件：</b>' + src + '<br><b>行：</b>' + line + '</div>';
+    return false;
+};
+</script>
+<!-- ========== 游戏中心页面 ========== -->
+<div class="page" id="gameHubPage">
+    <div class="header" style="background:linear-gradient(135deg,#98D8C8,#6BBF9F)">
+        <button class="hbtn" onclick="closePage()">←</button>
+        <h1>Game</h1>
+        <div style="width:34px"></div>
+    </div>
+    <div class="s-body" style="padding:16px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+            <div class="game-hub-card" onclick="openVNGame()">
+                <div class="game-hub-icon">💝</div>
+                <div class="game-hub-name">恋爱养成</div>
+                <div class="game-hub-desc">与角色互动，提升好感</div>
+            </div>
+            <div class="game-hub-card" onclick="openTwentyQ()">
+    <div class="game-hub-icon">❓</div>
+    <div class="game-hub-name">二十问</div>
+    <div class="game-hub-desc">问答挑战，增进了解</div>
+</div>
+        </div>
+    </div>
+</div>
+
+<!-- ========== 恋爱养成游戏页面 ========== -->
+<div class="page" id="vnGamePage">
+    <div class="vn-container" id="vnContainer">
+        <!-- 背景层 -->
+        <div class="vn-bg" id="vnBg"></div>
+        <!-- 时间段覆盖层（可选渐变） -->
+        <div class="vn-time-overlay" id="vnTimeOverlay"></div>
+
+        <!-- 顶栏 -->
+        <div class="vn-topbar">
+            <button class="vn-btn-icon" onclick="closeVNGame()">←</button>
+            <div class="vn-char-name" id="vnCharName">小洄</div>
+            <button class="vn-btn-icon" onclick="openVNSettings()">⚙️</button>
+        </div>
+
+        <!-- 好感度条 -->
+        <div class="vn-affection-bar">
+            <div class="vn-affection-label" id="vnAffLabel">好朋友</div>
+            <div class="vn-affection-track">
+                <div class="vn-affection-fill" id="vnAffFill"></div>
+            </div>
+            <div class="vn-affection-val" id="vnAffVal">52</div>
+        </div>
+
+        <!-- 角色立绘 -->
+        <div class="vn-sprite-wrap" id="vnSpriteWrap">
+            <img class="vn-sprite" id="vnSprite" src="" draggable="false">
+        </div>
+
+        <!-- 戳戳提示浮现 -->
+        <div class="vn-poke-bubble" id="vnPokeBubble"></div>
+
+        <!-- 角色对话框（上方） -->
+        <div class="vn-dialog-box" id="vnDialogBox">
+            <div class="vn-dialog-name" id="vnDialogName">小洄</div>
+            <div class="vn-dialog-text" id="vnDialogText">…</div>
+        </div>
+
+        <!-- 选项区（偶尔出现） -->
+        <div class="vn-choices" id="vnChoices" style="display:none"></div>
+
+        <!-- 底部输入区 -->
+        <div class="vn-input-area">
+            <textarea class="vn-input" id="vnInput" placeholder="和她说点什么…" rows="1" oninput="vnAutoGrow(this)" onkeydown="vnOnKey(event)"></textarea>
+            <button class="vn-send-btn" onclick="vnSendMsg()">➤</button>
+        </div>
+    </div>
+</div>
+
+<!-- ========== VN游戏设置弹窗 ========== -->
+<div class="modal" id="vnSettingsModal">
+    <div class="modal-box" style="max-height:85vh;overflow-y:auto">
+        <h2>⚙️ 游戏设置</h2>
+
+        <!-- 角色选择 -->
+        <h3>角色</h3>
+        <div id="vnCharList" style="max-height:160px;overflow-y:auto;border:1px solid #eee;border-radius:10px;margin-bottom:4px"></div>
+        <button onclick="openVNCreateChar()" style="width:100%;padding:10px;border:none;border-radius:10px;background:var(--primary-light);color:var(--primary-dark);font-size:14px;cursor:pointer;margin-top:8px">+ 新建角色</button>
+
+        <div class="modal-btns"><button class="btn-ok" onclick="closeModal('vnSettingsModal')">关闭</button></div>
+    </div>
+</div>
+
+<!-- ========== VN新建/编辑角色弹窗 ========== -->
+<div class="modal" id="vnCharModal">
+    <div class="modal-box" style="max-height:90vh;overflow-y:auto">
+        <h2 id="vnCharModalTitle">✨ 新建角色</h2>
+
+        <div class="field"><label>角色名字 *</label><input type="text" id="vnCharNameInput" placeholder="如：小雪"></div>
+        <div class="field"><label>人设简介</label><textarea id="vnCharPersona" placeholder="性格、背景..." style="min-height:60px"></textarea></div>
+
+        <h3>立绘（按情绪上传）</h3>
+        <div id="vnSpriteList" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px"></div>
+
+        <h3>地点</h3>
+        <div id="vnPlaceList" style="margin-bottom:8px"></div>
+        <button onclick="openVNAddPlace()" style="width:100%;padding:10px;border:none;border-radius:10px;background:var(--primary-light);color:var(--primary-dark);font-size:14px;cursor:pointer">+ 添加地点</button>
+
+        <h3>戳戳字卡</h3>
+        <div class="field"><label>普通字卡（每行一条）</label><textarea id="vnPokeCards" style="min-height:80px" placeholder="有什么事吗？&#10;不要戳我啦。"></textarea></div>
+        <div class="field"><label>生气字卡（连戳5次触发，每行一条）</label><textarea id="vnPokeAngryCards" style="min-height:60px" placeholder="不要！戳！！啦！！！&#10;你你你你你你！！！"></textarea></div>
+        <button onclick="vnGenPokeCards()" style="width:100%;padding:10px;border:none;border-radius:10px;background:var(--accent-mint);color:#2D7A5F;font-size:14px;cursor:pointer;margin-bottom:12px">🤖 AI一键生成字卡</button>
+
+        <h3>拖拽字卡</h3>
+        <div class="field"><label>被拖动时的话（每行一条）</label><textarea id="vnDragCards" style="min-height:60px" placeholder="呀！&#10;你干嘛啦。"></textarea></div>
+        <button onclick="vnGenDragCards()" style="width:100%;padding:10px;border:none;border-radius:10px;background:var(--accent-mint);color:#2D7A5F;font-size:14px;cursor:pointer;margin-bottom:12px">🤖 AI一键生成拖拽字卡</button>
+
+        <div class="modal-btns">
+            <button class="btn-cancel" onclick="closeModal('vnCharModal')">取消</button>
+            <button class="btn-ok" onclick="saveVNChar()">保存</button>
+        </div>
+        <button class="btn-danger" id="vnDelCharBtn" style="display:none" onclick="deleteVNChar()">🗑️ 删除角色</button>
+    </div>
+</div>
+
+<!-- ========== VN添加地点弹窗 ========== -->
+<div class="modal" id="vnPlaceModal">
+    <div class="modal-box">
+        <h2 id="vnPlaceModalTitle">📍 添加地点</h2>
+        <div class="field"><label>地点名称 *</label><input type="text" id="vnPlaceNameInput" placeholder="如：咖啡厅"></div>
+        <div class="field"><label>地点描述（留空可AI生成）</label><textarea id="vnPlaceDesc" placeholder="氛围、特点..."></textarea></div>
+        <h3>背景图（按时间段）</h3>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
+            <div>
+                <div style="font-size:11px;color:var(--text-gray);margin-bottom:4px;text-align:center">早上</div>
+                <div class="vn-bg-upload" id="vnBgUploadMorning" onclick="vnPickBg('morning')">
+                    <img id="vnBgPreviewMorning" style="display:none;width:100%;height:100%;object-fit:cover;border-radius:8px">
+                    <span id="vnBgIconMorning">🌅</span>
+                </div>
+            </div>
+            <div>
+                <div style="font-size:11px;color:var(--text-gray);margin-bottom:4px;text-align:center">傍晚</div>
+                <div class="vn-bg-upload" id="vnBgUploadEvening" onclick="vnPickBg('evening')">
+                    <img id="vnBgPreviewEvening" style="display:none;width:100%;height:100%;object-fit:cover;border-radius:8px">
+                    <span id="vnBgIconEvening">🌆</span>
+                </div>
+            </div>
+            <div>
+                <div style="font-size:11px;color:var(--text-gray);margin-bottom:4px;text-align:center">夜晚</div>
+                <div class="vn-bg-upload" id="vnBgUploadNight" onclick="vnPickBg('night')">
+                    <img id="vnBgPreviewNight" style="display:none;width:100%;height:100%;object-fit:cover;border-radius:8px">
+                    <span id="vnBgIconNight">🌙</span>
+                </div>
+            </div>
+        </div>
+        <button onclick="vnGenPlaceDesc()" style="width:100%;padding:10px;border:none;border-radius:10px;background:var(--accent-mint);color:#2D7A5F;font-size:14px;cursor:pointer;margin-bottom:12px">🤖 AI生成描述</button>
+        <div class="modal-btns">
+            <button class="btn-cancel" onclick="closeModal('vnPlaceModal')">取消</button>
+            <button class="btn-ok" onclick="saveVNPlace()">保存</button>
+        </div>
+        <button class="btn-danger" id="vnDelPlaceBtn" style="display:none" onclick="deleteVNPlace()">🗑️ 删除地点</button>
+    </div>
+</div>
+
+<!-- VN图片选择（背景/立绘） -->
+<div class="choice-modal" id="vnImgChoice">
+    <div class="choice-box">
+        <div class="choice-item" id="vnImgChoiceAlbum" onclick="vnImgFromAlbum()">📷 从相册选择</div>
+        <div class="choice-item" onclick="vnImgFromUrl()">🔗 输入URL</div>
+        <div class="choice-item" id="vnImgChoiceAI" onclick="vnImgFromAI()" style="display:none">🤖 AI生成</div>
+        <div class="choice-item" id="vnImgChoiceRemove" onclick="vnImgRemove()" style="color:#FF6B6B;display:none">🗑️ 移除</div>
+        <div class="choice-cancel" onclick="closeChoice('vnImgChoice')">取消</div>
+    </div>
+</div>
+<div class="modal" id="vnImgUrlModal">
+    <div class="modal-box">
+        <h2>🔗 输入图片URL</h2>
+        <div class="field"><input type="text" id="vnImgUrlInput" placeholder="https://..."></div>
+        <div class="modal-btns">
+            <button class="btn-cancel" onclick="closeModal('vnImgUrlModal')">取消</button>
+            <button class="btn-ok" onclick="vnImgConfirmUrl()">确认</button>
+        </div>
+    </div>
+</div>
+<input type="file" id="vnImgFileInput" accept="image/*" style="display:none" onchange="vnImgFileSelected(event)">
+
+<!-- 地点切换弹窗 -->
+<div class="modal" id="vnPlacePickerModal">
+    <div class="modal-box">
+        <h2>📍 切换地点</h2>
+        <div id="vnPlacePickerList" style="max-height:300px;overflow-y:auto"></div>
+        <div class="modal-btns"><button class="btn-cancel" onclick="closeModal('vnPlacePickerModal')">取消</button></div>
+    </div>
+</div>
+
+<!-- ========== 二十问页面 ========== -->
+<div class="page" id="twentyQPage">
+    <div class="header" style="background:#111;border-bottom:1px solid #222">
+        <button class="hbtn" onclick="closeTwentyQ()">‹</button>
+        <h1 style="color:white">二十问</h1>
+        <button onclick="openTqHistory()" style="background:none;border:none;color:#666;font-size:13px;cursor:pointer;padding:4px 8px">历史</button>
+    </div>
+
+    <!-- 设置页 -->
+    <div id="tqSetupView" class="tq-setup">
+        <div class="tq-section-title">主办方</div>
+        <div class="tq-mode-btns">
+            <button class="tq-mode-btn" data-mode="ai" onclick="tqSelectMode('ai')">🤖 AI出题</button>
+            <button class="tq-mode-btn" data-mode="user" onclick="tqSelectMode('user')">✍️ 我来出题</button>
+        </div>
+        <div id="tqAiOptions" style="display:none">
+            <div class="tq-section-title">题目主题</div>
+            <input class="tq-input" id="tqAiTopic" placeholder="如：日本历史、恋爱心理学、角色背景…">
+        </div>
+        <div id="tqUserOptions" style="display:none">
+            <div class="tq-section-title">主题</div>
+            <input class="tq-input" id="tqUserTopic" placeholder="如：我们的故事、世界书知识…">
+            <div class="tq-section-title">题型</div>
+            <select class="tq-select" id="tqUserQType">
+                <option value="mix">混合（AI决定）</option>
+                <option value="choice">全选择题</option>
+                <option value="text">全简答题</option>
+            </select>
+        </div>
+        <div class="tq-section-title">角色绑定</div>
+        <select class="tq-select" id="tqCharSelect" onchange="tqOnCharChange()"></select>
+        <div id="tqCharDescWrap">
+            <div class="tq-section-title">手动输入角色描述</div>
+            <textarea class="tq-input" id="tqCharDescInput" placeholder="或手动描述角色设定…" style="min-height:60px;resize:none"></textarea>
+        </div>
+        <div class="tq-section-title">世界书</div>
+        <div id="tqWbList"></div>
+        <div class="tq-section-title">上下文</div>
+        <div class="tq-switch-row">
+            <span>将问答结果注入角色记忆</span>
+            <label class="switch"><input type="checkbox" id="tqInjectCtx"><span class="slider"></span></label>
+        </div>
+        <button class="tq-start-btn" id="tqStartBtn" onclick="tqStart()">开始答题</button>
+        <div style="height:30px"></div>
+    </div>
+
+    <!-- 答题页 -->
+    <div id="tqGameView" style="display:none;flex-direction:column;flex:1;overflow:hidden">
+        <div class="tq-progress-bar-wrap">
+            <div class="tq-progress-bar" id="tqProgressBar" style="width:5%"></div>
+        </div>
+        <div class="tq-progress-text" id="tqProgress">1 / 20</div>
+        <div class="tq-card" id="tqCard">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+                <div class="tq-q-num" id="tqQNum">Q1</div>
+                <div class="tq-q-type-tag" id="tqQType">单选</div>
+            </div>
+            <div class="tq-q-text" id="tqQText"></div>
+            <div id="tqAnswerArea"></div>
+            <div class="tq-feedback" id="tqFeedback"></div>
+        </div>
+        <button class="tq-next-btn" id="tqNextBtn" onclick="tqNext()">下一题 →</button>
+    </div>
+
+    <!-- 结算页 -->
+    <div id="tqResultView" style="display:none;flex-direction:column;flex:1;overflow:hidden">
+        <div class="tq-result">
+            <div class="tq-score-wrap">
+                <div class="tq-score-label">SCORE</div>
+                <div class="tq-score-num" id="tqScoreNum">?</div>
+                <div class="tq-score-total" id="tqScoreTotal">/ 20</div>
+            </div>
+            <div class="tq-aff-change" id="tqAffChange"></div>
+            <div class="tq-comment-box" id="tqAiCommentBox">批阅中…</div>
+            <button id="tqRetryBtn" onclick="tqRetry()" style="display:none;width:100%;padding:14px;border:none;border-radius:12px;background:#1a1a1a;color:#e53935;font-size:15px;font-weight:600;cursor:pointer;margin-bottom:12px;border:1px solid rgba(229,57,53,0.3)">🔄 重新批阅</button>
+            <div id="tqReviewList" style="width:100%"></div>
+                        <div class="tq-result-btns">
+                <button class="tq-result-btn primary" onclick="tqGoChat()">💬 去聊这场问答</button>
+                <button class="tq-result-btn secondary" onclick="openTwentyQ()">🔄 再来一局</button>
+                <button class="tq-result-btn secondary" onclick="closeTwentyQ()">返回</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 我来出题：题目编辑视图 -->
+    <div id="myTqEditView" style="display:none;flex-direction:column;flex:1;overflow:hidden">
+        <div style="padding:12px 16px;border-bottom:1px solid #222;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+            <div>
+                <div id="myTqTopicLabel" style="font-size:13px;font-weight:600;color:white"></div>
+                <div id="myTqQCount" style="font-size:11px;color:#555;margin-top:2px"></div>
+            </div>
+            <button id="myTqStartBtn" onclick="myTqStartGame()" style="padding:10px 18px;border:none;border-radius:12px;background:var(--primary);color:white;font-size:13px;font-weight:600;cursor:pointer">让AI来答 →</button>
+        </div>
+        <div id="myTqQList" style="flex:1;overflow-y:auto;padding:12px"></div>
+        <div style="padding:12px 16px;border-top:1px solid #222;flex-shrink:0">
+            <button onclick="myTqAddQuestion()" style="width:100%;padding:12px;border:1.5px dashed #333;border-radius:12px;background:transparent;color:#666;font-size:14px;cursor:pointer">+ 添加题目</button>
+        </div>
+    </div>
+
+    <!-- 我来出题：结算视图 -->
+    <div id="myTqResultView" style="display:none;flex-direction:column;flex:1;overflow-y:auto">
+        <div style="text-align:center;padding:24px 16px 16px;flex-shrink:0">
+            <div style="font-size:13px;color:#555;margin-bottom:8px">AI答对了</div>
+            <div style="display:flex;align-items:baseline;justify-content:center;gap:4px">
+                <span id="myTqScoreNum" style="font-size:56px;font-weight:700;color:white">0</span>
+                <span id="myTqScoreTotal" style="font-size:20px;color:#555">/ 0</span>
+            </div>
+            <div id="myTqAffChange" style="display:none;margin:8px auto 0;padding:6px 18px;border-radius:20px;font-size:14px;font-weight:600;width:fit-content"></div>
+        </div>
+        <div style="margin:0 16px 12px;padding:14px;background:#111;border-radius:14px;flex-shrink:0">
+            <div style="font-size:12px;color:#555;margin-bottom:6px">AI的感想</div>
+            <div id="myTqAiCommentBox" style="font-size:14px;color:#ccc;line-height:1.7"></div>
+        </div>
+        <div style="display:flex;gap:10px;padding:0 16px 12px;flex-shrink:0">
+            <button onclick="myTqGoChat()" style="flex:1;padding:12px;border:none;border-radius:12px;background:var(--primary);color:white;font-size:14px;cursor:pointer">去聊聊这件事</button>
+            <button onclick="myTqBackToSetup()" style="flex:1;padding:12px;border:none;border-radius:12px;background:#1a1a1a;color:#888;font-size:14px;cursor:pointer">返回</button>
+        </div>
+        <div id="myTqReviewList" style="padding:0 16px 20px"></div>
+    </div>
+</div>
+    <!-- 以下全部新增，替换原来的<script>大块 -->
+    <script src="核心数据.js"></script>
+    <script src="账号角色.js"></script>
+    <script src="聊天系统.js"></script>
+    <script src="AI回复.js"></script>
+    <script src="社交功能.js"></script>
+    <script src="地图系统.js"></script>
+    <script src="辅助功能.js"></script>
+    <script src="通话系统.js"></script>  
+    <script src="钱包系统.js"></script>
+    <script src="游戏系统.js"></script>
+    <script src="邮箱系统.js"></script>
+    <script src="查手机系统.js"></script>
+    <script src="界面设置.js"></script>
+<div id="debugConsole" style="position:fixed;bottom:0;left:0;right:0;height:220px;background:rgba(0,0,0,0.9);color:#0f0;font-size:11px;font-family:monospace;z-index:999999;display:none;flex-direction:column">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 8px;background:#111;border-bottom:1px solid #333">
+        <span style="color:#888">DEBUG</span>
+        <div style="display:flex;gap:8px">
+            <button onclick="document.getElementById('debugLog').innerHTML=''" style="background:none;border:1px solid #444;color:#888;padding:2px 8px;border-radius:4px;cursor:pointer">清空</button>
+            <button onclick="document.getElementById('debugConsole').style.display='none'" style="background:none;border:1px solid #444;color:#888;padding:2px 8px;border-radius:4px;cursor:pointer">关闭</button>
+        </div>
+    </div>
+    <div id="debugLog" style="flex:1;overflow-y:auto;padding:6px 8px;word-break:break-all"></div>
+    <div style="display:flex;gap:6px;padding:6px 8px;border-top:1px solid #333">
+        <input id="debugInput" placeholder="输入JS代码回车执行…" style="flex:1;background:#111;border:1px solid #333;color:#0f0;padding:4px 8px;border-radius:4px;font-size:11px;font-family:monospace;outline:none" onkeydown="if(event.key==='Enter'){try{var r=eval(this.value);dbg('=> '+(r===undefined?'undefined':String(r)));}catch(e){dbg('ERR: '+e.message);}this.value=''}">
+        <button onclick="var inp=document.getElementById('debugInput');try{var r=eval(inp.value);dbg('=> '+(r===undefined?'undefined':String(r)));}catch(e){dbg('ERR: '+e.message);}inp.value=''" style="background:none;border:1px solid #444;color:#0f0;padding:2px 10px;border-radius:4px;cursor:pointer;font-size:11px">执行</button>
+    </div>
+</div>
+<!-- ========== 邮箱页面 ========== -->
+<div class="page" id="emailPage">
+    <div class="header" style="background:linear-gradient(135deg,#87CEEB,#4682B4)">
+        <button class="hbtn" onclick="closeEmailPage()">←</button>
+        <h1>Mail</h1>
+        <div style="display:flex;gap:6px">
+            <button class="hbtn" onclick="generateRandomEmails()">⚡</button>
+            <button class="hbtn" onclick="openComposeEmail()">✏️</button>
+        </div>
+    </div>
+    <div class="email-body">
+        <div id="emailFolderList"></div>
+        <div id="emailListWrap"></div>
+        <div id="emailDetailWrap"></div>
+    </div>
+</div>
+
+<!-- 写邮件弹窗 -->
+<div class="modal" id="composeEmailModal">
+    <div class="modal-box" style="max-height:80vh">
+        <h2>✉️ 写邮件</h2>
+        <div class="field">
+            <label>收件人</label>
+            <select id="composeEmailToSelect" onchange="onEmailToSelect()" style="width:100%;padding:8px;border:1px solid #e0e0e0;border-radius:8px;margin-bottom:8px"></select>
+            <input type="text" id="composeEmailTo" placeholder="或直接输入邮箱地址">
+        </div>
+        <div class="field">
+            <label>主题</label>
+            <input type="text" id="composeEmailSubject" placeholder="邮件主题">
+        </div>
+        <div class="field">
+            <label>正文</label>
+            <textarea id="composeEmailBody" style="min-height:150px" placeholder="邮件内容..."></textarea>
+        </div>
+        <input type="hidden" id="composeEmailReplyTo" style="display:none">
+        <input type="hidden" id="composeEmailDraftId">
+        <div class="modal-btns">
+            <button class="btn-cancel" onclick="saveDraft()">存草稿</button>
+            <button class="btn-ok" onclick="sendEmail()">发送</button>
+        </div>
+    </div>
+</div>
+<!-- 调试控制台 -->
+<div id="dbgWin" style="display:none;position:fixed;left:20px;top:100px;width:340px;height:260px;background:#0d0d0d;border:1px solid #2a2a2a;border-radius:14px;z-index:999999;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.6);overflow:hidden">
+    <!-- 标题栏（拖动区） -->
+    <div id="dbgTitleBar" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#111;border-bottom:1px solid #1a1a1a;cursor:move;user-select:none;flex-shrink:0">
+        <span style="font-size:11px;color:#444;font-family:monospace;letter-spacing:1px">DEBUG CONSOLE</span>
+        <div style="display:flex;gap:6px;align-items:center">
+            <button onclick="dbgClear()" style="background:none;border:none;color:#444;font-size:11px;cursor:pointer;padding:2px 6px;border-radius:4px;font-family:monospace">CLR</button>
+            <button onclick="dbgToggle()" style="background:none;border:none;color:#444;font-size:16px;cursor:pointer;line-height:1;padding:0 4px">×</button>
+        </div>
+    </div>
+    <!-- 日志区 -->
+    <div id="dbgLog" style="flex:1;overflow-y:auto;padding:6px 10px;font-family:monospace;font-size:11px;word-break:break-all;line-height:1.6"></div>
+    <!-- 输入区 -->
+    <div style="display:flex;gap:6px;padding:6px 10px;border-top:1px solid #1a1a1a;flex-shrink:0;background:#0d0d0d">
+        <input id="dbgInput" placeholder="JS..." style="flex:1;background:#1a1a1a;border:1px solid #2a2a2a;color:#0f0;padding:5px 8px;border-radius:6px;font-size:11px;font-family:monospace;outline:none" onkeydown="if(event.key==='Enter'){dbgExec()}">
+        <button onclick="dbgExec()" style="background:#1a1a1a;border:1px solid #2a2a2a;color:#0f0;padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;font-family:monospace">▶</button>
+    </div>
+    <!-- 缩放手柄 -->
+    <div id="dbgResizeHandle" style="position:absolute;right:0;bottom:0;width:16px;height:16px;cursor:se-resize;display:flex;align-items:center;justify-content:center">
+        <svg width="10" height="10" viewBox="0 0 10 10"><path d="M9 1L1 9M9 5L5 9M9 9" stroke="#333" stroke-width="1.5" stroke-linecap="round"/></svg>
+    </div>
+</div>
+<!-- LOG 悬浮按钮 -->
+<div id="dbgBtn" style="display:none;position:fixed;right:16px;bottom:80px;z-index:999998;background:#0d0d0d;color:#0f0;border:1px solid #2a2a2a;border-radius:20px;padding:7px 16px;font-size:11px;cursor:move;font-family:monospace;user-select:none;box-shadow:0 4px 16px rgba(0,0,0,0.5);letter-spacing:1px">LOG</div>
+<!-- 历史记录列表弹窗 -->
+<div id="tqHistoryModal" class="modal">
+    <div class="modal-box" style="max-width:480px;width:92%;max-height:80vh;display:flex;flex-direction:column;padding:0;border-radius:20px;overflow:hidden">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #1a1a1a;flex-shrink:0">
+            <span style="font-size:16px;font-weight:600;color:white">历史记录</span>
+            <div style="display:flex;gap:10px;align-items:center">
+                <button onclick="tqClearAllHistory()" style="background:none;border:none;color:#555;font-size:12px;cursor:pointer">清空</button>
+                <button onclick="closeModal('tqHistoryModal')" style="background:none;border:none;color:#888;font-size:22px;cursor:pointer;line-height:1">×</button>
+            </div>
+        </div>
+        <div id="tqHistoryList" style="flex:1;overflow-y:auto;padding:12px 16px"></div>
+    </div>
+</div>
+
+<!-- 历史记录详情弹窗 -->
+<div id="tqDetailModal" class="modal">
+    <div class="modal-box" style="max-width:480px;width:92%;max-height:85vh;display:flex;flex-direction:column;padding:0;border-radius:20px;overflow:hidden">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #1a1a1a;flex-shrink:0">
+            <button onclick="closeModal('tqDetailModal');openModal('tqHistoryModal')" style="background:none;border:none;color:#888;font-size:20px;cursor:pointer">‹</button>
+            <span id="tqDetailTitle" style="font-size:15px;font-weight:600;color:white;flex:1;text-align:center;margin:0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+            <button onclick="closeModal('tqDetailModal')" style="background:none;border:none;color:#888;font-size:22px;cursor:pointer;line-height:1">×</button>
+        </div>
+        <div style="flex:1;overflow-y:auto;padding:16px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                <span id="tqDetailDate" style="font-size:12px;color:#555"></span>
+                <span id="tqDetailScore" style="font-size:22px;font-weight:700;color:white"></span>
+            </div>
+            <div id="tqDetailComment" style="font-size:13px;color:#888;padding:12px;background:#111;border-radius:12px;margin-bottom:16px;line-height:1.6;font-style:italic"></div>
+            <div id="tqDetailReviewList"></div>
+        </div>
+    </div>
+</div>
+<!-- 我来出题：题目编辑弹窗 -->
+<div class="modal" id="myTqEditorModal">
+    <div class="modal-box" style="max-height:85vh;overflow-y:auto">
+        <h2 id="myTqEditorTitle">编辑题目</h2>
+        <div class="field">
+            <label>题目内容</label>
+            <textarea id="myTqEditorQText" placeholder="输入题目…" style="min-height:70px"></textarea>
+        </div>
+        <div class="field">
+            <label>题型</label>
+            <div style="display:flex;gap:8px">
+                <button class="mytq-type-btn active" data-type="choice" onclick="myTqSelectType('choice')">单选</button>
+                <button class="mytq-type-btn" data-type="multi" onclick="myTqSelectType('multi')">多选</button>
+                <button class="mytq-type-btn" data-type="text" onclick="myTqSelectType('text')">简答</button>
+            </div>
+        </div>
+        <div id="myTqEditorOptsWrap" class="field"></div>
+        <div class="field">
+            <label>正确答案</label>
+            <input type="text" id="myTqEditorAnswer" placeholder="单选填 A，多选填 AC，简答填关键词">
+        </div>
+        <div class="modal-btns">
+            <button class="btn-cancel" onclick="closeModal('myTqEditorModal')">取消</button>
+            <button class="btn-ok" onclick="myTqSaveEditor()">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- 世界书导入导出弹窗 -->
+<div class="modal" id="wbImportExportModal">
+    <div class="modal-box">
+        <h2>⇅ 导入 / 导出</h2>
+        <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px">
+            <button onclick="exportWb()" class="btn-big btn-mint">📤 导出当前世界书</button>
+            <button onclick="exportAllWb()" class="btn-big" style="background:var(--primary-light);color:var(--primary-dark)">📦 导出全部世界书</button>
+            <button onclick="$('wbImportInput').click()" class="btn-big" style="background:#f0f0f0">📥 从文件导入</button>
+        </div>
+        <input type="file" id="wbImportInput" accept=".json" style="display:none" onchange="onWbImport(event)">
+        <div class="modal-btns"><button class="btn-ok" onclick="closeModal('wbImportExportModal')">关闭</button></div>
+    </div>
+</div>
+<!-- ========== 通话系统 HTML ========== -->
+
+<!-- 语音/视频通话全屏界面 -->
+<div id="callScreen" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:10000;flex-direction:column;background:#1a1a2e">
+
+    <!-- 顶部栏 -->
+    <div id="callTopBar" style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;flex-shrink:0">
+        <div id="callTypeLabel" style="font-size:13px;color:rgba(255,255,255,0.6);display:flex;align-items:center;gap:6px">
+            <div style="width:8px;height:8px;border-radius:50%;background:#4CAF50"></div>
+            语音通话
+        </div>
+        <button onclick="minimizeCall()" style="background:rgba(255,255,255,0.15);border:none;color:white;padding:8px 14px;border-radius:20px;font-size:13px;cursor:pointer">缩小 ↙</button>
+    </div>
+
+    <!-- 视频背景区（仅视频通话显示） -->
+    <div id="callVideoBg" style="display:none;position:relative;margin:0 16px;border-radius:20px;overflow:hidden;background:#0d0d1a;flex-shrink:0">
+        <img id="callBgImg" style="width:100%;height:200px;object-fit:cover;display:block" src="" onerror="this.style.display='none'">
+        <div id="callBgLoading" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;flex-direction:column;gap:8px;color:rgba(255,255,255,0.7);font-size:13px">
+            <div class="call-spinner"></div>
+            生成场景中...
+        </div>
+        <!-- 头像叠在背景上 -->
+        <div style="position:absolute;bottom:12px;left:12px;display:flex;align-items:center;gap:10px">
+            <div id="callAvatarOnBg" style="width:48px;height:48px;border-radius:50%;background:var(--primary);display:flex;align-items:center;justify-content:center;font-size:22px;border:2px solid rgba(255,255,255,0.6);overflow:hidden"></div>
+            <div id="callNameOnBg" style="color:white;font-size:14px;font-weight:600;text-shadow:0 1px 4px rgba(0,0,0,0.5)"></div>
+        </div>
+    </div>
+
+    <!-- 语音通话头像区 -->
+    <div id="callVoiceAvatar" style="display:flex;flex-direction:column;align-items:center;padding:24px 0 16px;flex-shrink:0">
+        <div id="callAvatarRing" style="width:96px;height:96px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:42px;position:relative;overflow:hidden;background:var(--primary);border:3px solid rgba(255,255,255,0.3)"></div>
+        <div id="callCharName" style="color:white;font-size:18px;font-weight:600;margin-top:12px"></div>
+        <div id="callTimer" style="color:rgba(255,255,255,0.6);font-size:14px;margin-top:4px">00:00:00</div>
+    </div>
+
+    <!-- 消息区 -->
+    <div id="callMessages" style="flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:8px"></div>
+
+    <!-- 底部操作区 -->
+    <div style="flex-shrink:0;padding:12px 16px 8px;border-top:1px solid rgba(255,255,255,0.08)">
+        <!-- 输入栏 -->
+        <div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:12px">
+            <button id="callMicBtn"
+                ontouchstart="callMicStart(event)" ontouchend="callMicEnd(event)"
+                onmousedown="callMicStart(event)" onmouseup="callMicEnd(event)"
+                style="width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:white;font-size:20px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;user-select:none">🎤</button>
+            <textarea id="callInput" placeholder="输入消息..." rows="1"
+                style="flex:1;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:20px;color:white;padding:10px 14px;font-size:14px;resize:none;outline:none;font-family:inherit;max-height:80px"
+                oninput="callAutoGrow(this)"
+                onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();callSendMsg()}"></textarea>
+            <button onclick="callSendMsg()" style="width:44px;height:44px;border-radius:50%;background:var(--primary);border:none;color:white;font-size:18px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center">➤</button>
+        </div>
+        <!-- 挂断按钮 -->
+        <div style="display:flex;justify-content:center;padding-bottom:8px">
+            <button onclick="endCall()" style="width:64px;height:64px;border-radius:50%;background:#FF4444;border:none;color:white;font-size:28px;cursor:pointer;box-shadow:0 4px 16px rgba(255,68,68,0.5);display:flex;align-items:center;justify-content:center">📵</button>
+        </div>
+    </div>
+</div>
+
+<!-- 悬浮小球 -->
+<div id="callBubble" style="display:none;position:fixed;z-index:10001;background:rgba(30,30,50,0.95);border-radius:16px;padding:10px 14px;box-shadow:0 4px 20px rgba(0,0,0,0.4);cursor:pointer;user-select:none;min-width:140px"
+    onclick="restoreCall()"
+    ontouchstart="bubbleDragStart(event)" ontouchmove="bubbleDragMove(event)" ontouchend="bubbleDragEnd(event)"
+    onmousedown="bubbleDragStart(event)">
+    <div style="display:flex;align-items:center;gap:10px">
+        <div id="bubbleAvatar" style="width:36px;height:36px;border-radius:50%;background:var(--primary);display:flex;align-items:center;justify-content:center;font-size:16px;overflow:hidden;flex-shrink:0"></div>
+        <div>
+            <div id="bubbleName" style="color:white;font-size:13px;font-weight:600"></div>
+            <div style="display:flex;align-items:center;gap:5px;margin-top:2px">
+                <div style="width:6px;height:6px;border-radius:50%;background:#4CAF50"></div>
+                <div id="bubbleTimer" style="color:rgba(255,255,255,0.6);font-size:11px">00:00:00</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 语音识别提示 -->
+<div id="callMicHint" style="display:none;position:fixed;bottom:160px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);color:white;padding:10px 20px;border-radius:20px;font-size:13px;z-index:10002;pointer-events:none">
+    🎤 松开发送
+</div>
+
+<!-- 通话记录 modal -->
+<div class="modal" id="callLogsModal">
+    <div class="modal-box" style="max-height:80vh">
+        <h2>📋 通话记录</h2>
+        <div id="callLogsList" style="max-height:50vh;overflow-y:auto"></div>
+        <div class="modal-btns">
+            <button class="btn-ok" onclick="closeModal('callLogsModal')">关闭</button>
+        </div>
+    </div>
+</div>
+
+<!-- 通话详情 modal -->
+<div class="modal" id="callDetailModal">
+    <div class="modal-box" style="max-height:80vh">
+        <h2 id="callDetailTitle">通话详情</h2>
+        <div id="callDetailList" style="max-height:55vh;overflow-y:auto"></div>
+        <div class="modal-btns">
+            <button class="btn-cancel" onclick="closeModal('callDetailModal');openModal('callLogsModal')">返回</button>
+            <button class="btn-ok" onclick="closeModal('callDetailModal')">关闭</button>
+        </div>
+    </div>
+</div>
+<div class="modal" id="exportModal">
+    <div class="modal-box">
+        <h2>📤 导出数据</h2>
+        <p style="font-size:12px;color:var(--text-gray);margin-bottom:14px;background:#f5f5f5;padding:10px;border-radius:8px">
+            选择要导出的内容，导出为 JSON 文件。<br>
+            ⚠️ 查手机生成的内容不会被导出。
+        </p>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+            <label style="display:flex;align-items:center;gap:10px;padding:11px 14px;background:#f8f8f8;border-radius:10px;cursor:pointer">
+                <input type="checkbox" id="exp_accounts" checked style="width:18px;height:18px">
+                <div><div style="font-weight:500;font-size:14px">账号与角色</div><div style="font-size:11px;color:var(--text-gray)">账号信息、角色人设、聊天记录、朋友圈等</div></div>
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;padding:11px 14px;background:#f8f8f8;border-radius:10px;cursor:pointer">
+                <input type="checkbox" id="exp_worldbooks" checked style="width:18px;height:18px">
+                <div><div style="font-weight:500;font-size:14px">世界书</div><div style="font-size:11px;color:var(--text-gray)">所有世界书及条目</div></div>
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;padding:11px 14px;background:#f8f8f8;border-radius:10px;cursor:pointer">
+                <input type="checkbox" id="exp_maps" checked style="width:18px;height:18px">
+                <div><div style="font-weight:500;font-size:14px">地图</div><div style="font-size:11px;color:var(--text-gray)">所有地图与地点数据</div></div>
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;padding:11px 14px;background:#f8f8f8;border-radius:10px;cursor:pointer">
+                <input type="checkbox" id="exp_memos" checked style="width:18px;height:18px">
+                <div><div style="font-weight:500;font-size:14px">备忘录</div><div style="font-size:11px;color:var(--text-gray)">所有备忘事项及设置</div></div>
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;padding:11px 14px;background:#f8f8f8;border-radius:10px;cursor:pointer">
+                <input type="checkbox" id="exp_api" style="width:18px;height:18px">
+                <div><div style="font-weight:500;font-size:14px">API配置</div><div style="font-size:11px;color:var(--text-gray)">地址、Key、模型、预设（含敏感信息）</div></div>
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;padding:11px 14px;background:#f8f8f8;border-radius:10px;cursor:pointer">
+                <input type="checkbox" id="exp_theme" style="width:18px;height:18px">
+                <div><div style="font-weight:500;font-size:14px">外观与功能设置</div><div style="font-size:11px;color:var(--text-gray)">主题色、壁纸、时区、各功能开关</div></div>
+            </label>
+        </div>
+        <div class="modal-btns">
+            <button class="btn-cancel" onclick="closeModal('exportModal')">取消</button>
+            <button class="btn-ok" onclick="doExportData()">导出</button>
+        </div>
+    </div>
+</div>
+</body>
+</html>
