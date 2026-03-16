@@ -3,7 +3,7 @@
 // ========================================
 // 配置区：每次更新只需修改这里
 const UPDATE_CONFIG = {
-  version: 'v1.0.1',
+  version: 'v1.0.2',
   content: `
 🎉 欢迎使用 HuiPhone！
 
