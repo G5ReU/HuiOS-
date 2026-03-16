@@ -3329,25 +3329,48 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; h
     background: #f8f8f8;
 }
 /* =================================================== */
-/* ▼▼▼ HuIOS: 最简回归方案 (不做任何复杂限制) ▼▼▼ */
+/* ▼▼▼ HuIOS: 终极极简全屏修正 (修复语法错误版) ▼▼▼ */
 /* =================================================== */
 
-/* 1. 让最外层自然撑满 */
+/* 1. 强制覆盖顶部的 dvh 设置，回归最稳定的 100% */
 html, body {
-    height: 100%;
-    margin: 0;
-    background-color: transparent; /* 背景设为透明，方便颜色过渡 */
-    overflow: auto; /* 允许自然滚动，不锁死 */
+    height: 100% !important;
+    min-height: 100% !important;
+    overflow: hidden !important; /* 维持你不想要整个网页上下乱滚的初衷 */
+    background-color: var(--bg-cream) !important;
 }
 
-/* 2. 主页面容器：只给高度，不给限制 */
+/* 2. 钉死四角大法：不依赖高度计算，直接用 fixed 贴合屏幕四周 */
 .home {
-    min-height: 100%; 
-    display: flex;
-    flex-direction: column;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    height: auto !important; /* 废弃 height 计算 */
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    /* 底部安全区给 Dock 栏留位置 */
+    padding-bottom: env(safe-area-inset-bottom) !important;
+    box-sizing: border-box !important;
+    z-index: 1;
+}
 
-/* 4. Dock 栏：自然悬浮在底部 */
+/* 3. 让背景图真正铺满整个屏幕，包括底部安全区 */
+.home-bg {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    z-index: -1 !important;
+}
+
+/* 4. Dock 栏靠底 */
 .home-dock {
-    margin-top: auto; /* 把它推到容器底部 */
-    margin-bottom: 10px; /* 离底部留一点呼吸感 */
+    margin-top: auto !important;
+    margin-bottom: 10px !important;
 }
