@@ -3328,3 +3328,67 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; h
 #callLogsList > div:active {
     background: #f8f8f8;
 }
+/* =================================================== */
+/* ▼▼▼ HuIOS: 终极四角物理锁死补丁 (终结白边与裁切) ▼▼▼ */
+/* =================================================== */
+
+/* 1. 彻底禁用 100dvh，让页面直接锁定在物理屏幕的四边，杜绝底面白边 */
+html, body {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important; /* 兜底 */
+    overflow: hidden !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background-color: var(--bg-cream) !important;
+}
+
+/* 2. 主容器钉死：上下左右全部贴边，只用 padding 给刘海和底部黑条留空间 */
+.home {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    height: auto !important; /* 核心：覆盖掉你原来写的 100dvh */
+    padding-top: env(safe-area-inset-top) !important;
+    padding-bottom: env(safe-area-inset-bottom) !important;
+    box-sizing: border-box !important;
+}
+
+/* 3. 背景图片：跟随屏幕大小完全撑开 */
+.home-bg {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    height: auto !important;
+}
+
+/* 4. Dock栏：不再依赖底部边缘，绝对悬浮在安全区上方 12px 处 */
+.home-dock {
+    position: absolute !important;
+    top: auto !important;
+    bottom: calc(env(safe-area-inset-bottom) + 12px) !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    width: 90% !important;
+    max-width: 280px !important;
+    z-index: 10 !important;
+}
+
+/* 5. 所有的二级满屏页面同样钉死四角，防止内部组件移位 */
+.page, .chatroom, .full-page, .group-page, .memory-page, .switch-account-page, .my-moments-page, .wb-detail-page, .phone-page {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    height: auto !important; /* 强制覆盖旧的 height: 100% */
+    box-sizing: border-box !important;
+}
