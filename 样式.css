@@ -3328,26 +3328,25 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; h
 #callLogsList > div:active {
     background: #f8f8f8;
 }
-
 /* =================================================== */
-/* ▼▼▼ HuIOS: 取消强制锁定，顺应 iOS 自然排版 (解锁版) ▼▼▼ */
+/* ▼▼▼ HuIOS: 解除滑动锁定 + 底部透明颜色过渡版 ▼▼▼ */
 /* =================================================== */
 
-/* 1. 解除 html 和 body 的滚动锁定与固定定位 */
+/* 1. 解除锁定，并将底层背景彻底抽空为透明 */
 html, body {
     position: relative !important;
     width: 100% !important;
     height: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
-    /* 核心：不要锁定滑动！允许 iOS 触发原生回弹来修复错位 */
     overflow: auto !important; 
     -webkit-overflow-scrolling: touch !important;
-    /* 兜底背景色，就算发生轻微推移也不会露出刺眼的白底 */
-    background-color: var(--bg-cream) !important;
+    
+    /* 【核心修改】设为透明！让页面的壁纸或背景色自然透出，消灭滑动时的断层 */
+    background-color: transparent !important; 
 }
 
-/* 2. 主页面容器改用 min-height，让它自然撑开，而不是被写死 */
+/* 2. 主页面容器自适应撑开，依靠内部的 .home-bg 壁纸来填充颜色 */
 .home {
     position: relative !important;
     width: 100% !important;
@@ -3355,11 +3354,14 @@ html, body {
     box-sizing: border-box !important;
     display: flex !important;
     flex-direction: column !important;
-    /* 容器内部可以隐藏多余内容，但不影响外部 */
     overflow: hidden !important; 
+    
+    /* 给主容器一个默认底色，防止还没加载壁纸时变黑。
+       这里不加 !important，保证能被其他深色模式或自定义主题覆盖 */
+    background-color: var(--bg-cream);
 }
 
-/* 3. 优雅降级：支持 dvh 的设备使用 dvh，不支持的用普通 100% */
+/* 3. 优雅降级支持动态视口高度 (dvh) */
 @supports (min-height: 100dvh) {
     .home {
         min-height: 100dvh !important;
