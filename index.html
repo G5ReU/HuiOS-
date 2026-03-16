@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <title>HuIOS</title>
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
     <meta name="apple-touch-fullscreen" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
@@ -1250,7 +1250,8 @@
             <div class="s-title">主页壁纸</div>
             <div class="s-section">
                 <div style="padding:12px;display:flex;gap:10px;align-items:center">
-                    <div id="homeWpPreview" onclick="openUpload('homeWp')" style="width:50px;height:70px;border-radius:8px;background:#f0f0f0;cursor:pointer;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text-light)">点击设置</div>
+<div id="homeWpPreview" onclick="triggerHomeWpUpload()" style="width:50px;height:70px;border-radius:8px;background:#f0f0f0;cursor:pointer;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text-light)">点击设置</div>
+<input type="file" id="homeWpFileInput" accept="image/*" style="display:none" onchange="onHomeWpSelected(event)">
                     <span style="font-size:12px;color:var(--text-gray)">自定义主页背景</span>
                 </div>
             </div>
@@ -2143,5 +2144,40 @@ window.onerror = function(msg, src, line, col, err) {
         </div>
     </div>
 </div>
+<script>
+function triggerHomeWpUpload() {
+    var choice = confirm('点击确定从相册选择图片，点击取消可移除当前壁纸');
+    if (choice) {
+        document.getElementById('homeWpFileInput').click();
+    } else {
+        D.theme.homeWp = '';
+        save();
+        applyTheme();
+        toast('已移除壁纸');
+    }
+}
+
+function onHomeWpSelected(event) {
+    var file = event.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function(e) {
+        var dataUrl = e.target.result;
+        D.theme.homeWp = dataUrl;
+        save();
+        var bg = document.getElementById('homeBg');
+        if (bg) {
+            bg.style.backgroundImage = 'url(' + dataUrl + ')';
+            bg.style.backgroundSize = 'cover';
+            bg.style.backgroundPosition = 'center';
+            bg.style.opacity = '1';
+        }
+        updateWpPreview('homeWpPreview', dataUrl);
+        toast('壁纸已设置');
+    };
+    reader.readAsDataURL(file);
+    event.target.value = '';
+}
+</script>
 </body>
 </html>

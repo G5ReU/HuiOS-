@@ -331,19 +331,20 @@ function renderMsgs(scroll) {
         return;
     }
     
- var h = '';
-var lastNonSysMsg = null;
-for (var i = 0; i < msgs.length; i++) {
-    var m = msgs[i];
-    if (m.type !== 'sys' && !m.recalled) {
-        if (needTimeLabel(lastNonSysMsg, m)) {
-            h += renderTimeLabel(m.time);
+    var h = '';
+    var lastNonSysMsg = null;
+    for (var i = 0; i < msgs.length; i++) {
+        var m = msgs[i];
+        if (m.type !== 'sys' && !m.recalled) {
+            if (needTimeLabel(lastNonSysMsg, m)) {
+                h += renderTimeLabel(m.time);
+            }
+            lastNonSysMsg = m;
         }
-        lastNonSysMsg = m;
+        h += renderMsg(m, i);
     }
-    h += renderMsg(m, i);
-}
-el.innerHTML = h;
+    el.innerHTML = h;
+    bindMsgTouchEvents();
     
     if (scroll !== false) setTimeout(function() { el.scrollTop = el.scrollHeight; }, 50);
 }
@@ -370,21 +371,16 @@ function renderMsg(m, idx) {
     var charId = curChar ? curChar.id : respondingCharId;
     var charData = data ? data.chars.find(function(c) { return c.id === charId; }) : null;
     
-    // 判断气泡位置
     var bubblePos = getBubblePosition(idx, m.role);
     var bubbleClass = 'bubble-' + bubblePos;
     
-    // 判断是否需要显示头像（只在first或single时显示）
     var needAiAvatar = m.role === 'ai' && showAiAvatar && (bubblePos === 'first' || bubblePos === 'single');
     var needUserAvatar = m.role === 'user' && showUserAvatar && (bubblePos === 'first' || bubblePos === 'single');
-    
-    // 判断当前消息是否需要头像布局
     var useAvatarLayout = (m.role === 'ai' && showAiAvatar) || (m.role === 'user' && showUserAvatar);
     
     if (useAvatarLayout) {
         var h = '<div class="msg-with-avatar '+m.role+' '+bubbleClass+'" data-idx="'+idx+'">';
         
-        // AI消息：头像在左
         if (m.role === 'ai' && showAiAvatar) {
             if (needAiAvatar) {
                 var aiAv = charData ? (charData.avatar && charData.avatar.length > 2 ? '<img src="'+charData.avatar+'">' : (charData.avatar || charData.realName.charAt(0))) : '🤖';
@@ -394,7 +390,6 @@ function renderMsg(m, idx) {
             }
         }
         
-        // 用户消息：头像在右
         if (m.role === 'user' && showUserAvatar) {
             if (needUserAvatar) {
                 var userAv = acc ? (acc.avatar && acc.avatar.length > 2 ? '<img src="'+acc.avatar+'">' : (acc.avatar || acc.persona.charAt(0))) : '👤';
@@ -404,24 +399,23 @@ function renderMsg(m, idx) {
             }
         }
         
-        h += '<div class="msg-bubble-wrap" ontouchstart="msgTouchStart(event,'+idx+')" ontouchend="msgTouchEnd()" oncontextmenu="showMsgMenu(event,'+idx+')">';
+        h += '<div class="msg-bubble-wrap" data-msgidx="'+idx+'" oncontextmenu="showMsgMenu(event,'+idx+')">';
         
         if (m.quoteContent) {
-    h += '<div class="msg-quote" onclick="jumpToQuoteByTime('+(m.quoteTime||0)+')">'+esc(m.quoteContent.slice(0,30))+(m.quoteContent.length>30?'...':'')+'</div>';
-}
+            h += '<div class="msg-quote" onclick="jumpToQuoteByTime('+(m.quoteTime||0)+')">'+esc(m.quoteContent.slice(0,30))+(m.quoteContent.length>30?'...':'')+'</div>';
+        }
         
         h += '<div class="msg-content-wrap">' + renderMsgContent(m, idx) + '</div>';
         h += '</div></div>';
         return h;
     }
     
-      // 无头像模式
     var cls = 'msg ' + m.role + ' ' + bubbleClass;
-    var h = '<div class="'+cls+'" data-idx="'+idx+'" ontouchstart="msgTouchStart(event,'+idx+')" ontouchend="msgTouchEnd()" oncontextmenu="showMsgMenu(event,'+idx+')">';
+    var h = '<div class="'+cls+'" data-idx="'+idx+'" data-msgidx="'+idx+'" oncontextmenu="showMsgMenu(event,'+idx+')">';
     
     if (m.quoteContent) {
-    h += '<div class="msg-quote" onclick="jumpToQuoteByTime('+(m.quoteTime||0)+')">'+esc(m.quoteContent.slice(0,30))+(m.quoteContent.length>30?'...':'')+'</div>';
-}
+        h += '<div class="msg-quote" onclick="jumpToQuoteByTime('+(m.quoteTime||0)+')">'+esc(m.quoteContent.slice(0,30))+(m.quoteContent.length>30?'...':'')+'</div>';
+    }
     
     h += '<div class="msg-content-wrap">' + renderMsgContent(m, idx) + '</div>';
     h += '</div>';
@@ -451,7 +445,6 @@ function getBubblePosition(idx, role) {
 
     var curMsg = msgs[idx];
 
-    // 跨5分钟区间则视为不连续
     var samePrev = prevMsg && prevMsg.role === role
         && get5MinSlot(prevMsg.time) === get5MinSlot(curMsg.time);
     var sameNext = nextMsg && nextMsg.role === role
@@ -467,50 +460,46 @@ function getBubblePosition(idx, role) {
 
 function renderMsgContent(m, idx) {
     var h = '';
-if (m.type === 'call_invite') {
-    var isFromAI = m.callFromAI;
-    var icon = m.callType === 'video' ? '📹' : '📞';
-    var label = m.callType === 'video' ? '视频通话' : '语音通话';
-
-    // 判断这次通话是否已完成：检查callLogs里有没有对应记录
-    var data = getAccData();
-    var charIdForCheck = isFromAI ? m.charId : (curChar ? curChar.id : null);
-    var callLogs = (data.callLogs || []);
-    var isFinished = callLogs.some(function(l) {
-        return l.charId === charIdForCheck && l.startTime >= m.time;
-    });
-
-    var h = '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(168,216,234,0.1);border-radius:12px;min-width:180px">';
-    h += '<span style="font-size:22px">' + icon + '</span>';
-    h += '<div style="flex:1"><div style="font-size:14px;font-weight:500">' + label + '</div>';
-
-    if (isFinished) {
-        h += '<div style="font-size:12px;color:var(--text-gray);margin-top:2px">通话已完成</div>';
-        h += '</div></div>';
-    } else if (isFromAI) {
-        h += '<div style="font-size:12px;color:var(--text-gray);margin-top:2px">' + (m.callReason || '邀请你通话') + '</div>';
-        h += '</div></div>';
-        h += '<div style="display:flex;gap:8px;margin-top:8px">';
-        h += '<button onclick="acceptAICall(\'' + esc(m.id) + '\')" style="flex:1;padding:8px;border:none;border-radius:10px;background:#4CAF50;color:white;font-size:13px;cursor:pointer">接听</button>';
-        h += '<button onclick="rejectAICall(\'' + esc(m.id) + '\')" style="flex:1;padding:8px;border:none;border-radius:10px;background:#f0f0f0;color:#666;font-size:13px;cursor:pointer">拒绝</button>';
-        h += '</div>';
-    } else {
-        h += '<div style="font-size:12px;color:var(--text-gray);margin-top:2px">等待接听...</div>';
-        h += '</div></div>';
+    if (m.type === 'call_invite') {
+        var isFromAI = m.callFromAI;
+        var icon = m.callType === 'video' ? '📹' : '📞';
+        var label = m.callType === 'video' ? '视频通话' : '语音通话';
+        var data = getAccData();
+        var charIdForCheck = isFromAI ? m.charId : (curChar ? curChar.id : null);
+        var callLogs = (data.callLogs || []);
+        var isFinished = callLogs.some(function(l) {
+            return l.charId === charIdForCheck && l.startTime >= m.time;
+        });
+        var h = '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(168,216,234,0.1);border-radius:12px;min-width:180px">';
+        h += '<span style="font-size:22px">' + icon + '</span>';
+        h += '<div style="flex:1"><div style="font-size:14px;font-weight:500">' + label + '</div>';
+        if (isFinished) {
+            h += '<div style="font-size:12px;color:var(--text-gray);margin-top:2px">通话已完成</div>';
+            h += '</div></div>';
+        } else if (isFromAI) {
+            h += '<div style="font-size:12px;color:var(--text-gray);margin-top:2px">' + (m.callReason || '邀请你通话') + '</div>';
+            h += '</div></div>';
+            h += '<div style="display:flex;gap:8px;margin-top:8px">';
+            h += '<button onclick="acceptAICall(\'' + esc(m.id) + '\')" style="flex:1;padding:8px;border:none;border-radius:10px;background:#4CAF50;color:white;font-size:13px;cursor:pointer">接听</button>';
+            h += '<button onclick="rejectAICall(\'' + esc(m.id) + '\')" style="flex:1;padding:8px;border:none;border-radius:10px;background:#f0f0f0;color:#666;font-size:13px;cursor:pointer">拒绝</button>';
+            h += '</div>';
+        } else {
+            h += '<div style="font-size:12px;color:var(--text-gray);margin-top:2px">等待接听...</div>';
+            h += '</div></div>';
+        }
+        return h;
     }
-    return h;
-}
 
-if (m.type === 'call') {
-    var callIcon = m.callType === 'video' ? '📹' : '📞';
-    var callLabel = m.callType === 'video' ? '视频通话' : '语音通话';
-    return '<div class="msg-call-bubble" onclick="viewCallDetail(\'' + (m.callLogId||'') + '\')" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(168,216,234,0.15);border-radius:12px;cursor:pointer;min-width:160px">'
-        + '<span style="font-size:22px">' + callIcon + '</span>'
-        + '<div><div style="font-size:14px;font-weight:500">' + callLabel + '</div>'
-        + '<div style="font-size:12px;color:var(--text-gray);margin-top:2px">' + esc(m.callDuration || '已结束') + '</div></div>'
-        + '<span style="margin-left:auto;color:var(--text-light);font-size:12px">›</span>'
-        + '</div>';
-}
+    if (m.type === 'call') {
+        var callIcon = m.callType === 'video' ? '📹' : '📞';
+        var callLabel = m.callType === 'video' ? '视频通话' : '语音通话';
+        return '<div class="msg-call-bubble" onclick="viewCallDetail(\'' + (m.callLogId||'') + '\')" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(168,216,234,0.15);border-radius:12px;cursor:pointer;min-width:160px">'
+            + '<span style="font-size:22px">' + callIcon + '</span>'
+            + '<div><div style="font-size:14px;font-weight:500">' + callLabel + '</div>'
+            + '<div style="font-size:12px;color:var(--text-gray);margin-top:2px">' + esc(m.callDuration || '已结束') + '</div></div>'
+            + '<span style="margin-left:auto;color:var(--text-light);font-size:12px">›</span>'
+            + '</div>';
+    }
     if (m.type === 'transfer') {
         return typeof renderTransferBubble === 'function' ? renderTransferBubble(m) : '';
     }
@@ -522,23 +511,19 @@ if (m.type === 'call') {
         h += '<img src="'+esc(m.stickerUrl)+'">';
         h += '</div>';
     } else if (m.type === 'location') {
-        // 🗺️ 位置分享卡片
         var locIcon = (typeof placeIcons !== 'undefined' && placeIcons[m.placeType]) ? placeIcons[m.placeType] : '📍';
         h += '<div class="msg-location-card" onclick="openLocationFromMsg(\'' + esc(m.mapId||'') + '\',\'' + esc(m.placeId||'') + '\')">';
         h += '<div class="loc-card-header">';
         h += '<span class="loc-card-icon">' + locIcon + '</span>';
         h += '<span class="loc-card-title">' + esc(m.placeName||'位置') + '</span>';
         h += '</div>';
-        if (m.content) {
-            h += '<div class="loc-card-msg">' + esc(m.content) + '</div>';
-        }
+        if (m.content) h += '<div class="loc-card-msg">' + esc(m.content) + '</div>';
         h += '<div class="loc-card-footer">';
         h += '<span>📍 ' + esc(m.mapName || '地图') + '</span>';
         h += '<span class="loc-card-action">查看位置 ›</span>';
         h += '</div>';
         h += '</div>';
     } else if (m.type === 'invite') {
-        // 🗺️ 邀请卡片
         var invIcon = (typeof placeIcons !== 'undefined' && placeIcons[m.placeType]) ? placeIcons[m.placeType] : '📍';
         h += '<div class="msg-invite-card" onclick="openLocationFromMsg(\'' + esc(m.mapId||'') + '\',\'' + esc(m.placeId||'') + '\')">';
         h += '<div class="invite-card-header">📨 邀请你去</div>';
@@ -546,9 +531,7 @@ if (m.type === 'call') {
         h += '<span class="invite-card-icon">' + invIcon + '</span>';
         h += '<span>' + esc(m.placeName||'某地') + '</span>';
         h += '</div>';
-        if (m.content) {
-            h += '<div class="invite-card-msg">"' + esc(m.content) + '"</div>';
-        }
+        if (m.content) h += '<div class="invite-card-msg">"' + esc(m.content) + '"</div>';
         h += '<div class="invite-card-actions">';
         h += '<button class="invite-btn-accept" onclick="event.stopPropagation();acceptInvite(\'' + esc(m.mapId||'') + '\',\'' + esc(m.placeId||'') + '\')">✓ 接受</button>';
         h += '<button class="invite-btn-view" onclick="event.stopPropagation();openLocationFromMsg(\'' + esc(m.mapId||'') + '\',\'' + esc(m.placeId||'') + '\')">查看地点</button>';
@@ -573,6 +556,40 @@ if (m.type === 'call') {
     }
     return h;
 }
+    
+function bindMsgTouchEvents() {
+    var el = $('messages');
+    if (!el) return;
+    var nodes = el.querySelectorAll('[data-msgidx]');
+    nodes.forEach(function(node) {
+        if (node._touchBound) return;
+        node._touchBound = true;
+        var idx = parseInt(node.getAttribute('data-msgidx'));
+        node.addEventListener('touchstart', function(e) {
+            e.preventDefault();
+            if (!e.touches || !e.touches[0]) return;
+            longPressSaved = {
+                x: e.touches[0].clientX,
+                y: e.touches[0].clientY,
+                idx: idx
+            };
+            longPressTimer = setTimeout(function() {
+                if (longPressSaved !== null) {
+                    showMsgMenuAt(longPressSaved.x, longPressSaved.y, longPressSaved.idx);
+                }
+            }, 500);
+        }, { passive: false });
+        node.addEventListener('touchend', function() {
+            if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+            longPressSaved = null;
+        });
+        node.addEventListener('touchmove', function() {
+            if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+            longPressSaved = null;
+        });
+    });
+}
+
 var avatarClickTimer = null;
 var avatarClickCount = 0;
 
@@ -642,7 +659,9 @@ if (msg.type !== 'sys' && !msg.recalled) {
 }
 var newHtml = renderMsg(msg, idx);
 if (newHtml || timeLabelHtml) {
-    el.insertAdjacentHTML('beforeend', timeLabelHtml + newHtml);
+
+el.insertAdjacentHTML('beforeend', timeLabelHtml + newHtml);
+bindMsgTouchEvents();
 
             var lastChild = el.lastElementElement;
             if (lastChild) {
@@ -739,7 +758,9 @@ if (msg.type !== 'sys' && !msg.recalled) {
 }
 var newHtml = renderMsg(msg, idx);
 if (newHtml || timeLabelHtml) {
-    el.insertAdjacentHTML('beforeend', timeLabelHtml + newHtml);
+
+el.insertAdjacentHTML('beforeend', timeLabelHtml + newHtml);
+bindMsgTouchEvents();
 
             var lastChild = el.lastElementChild;
             if (lastChild) {
@@ -901,8 +922,29 @@ function jumpToQuote(idx) {
     }
 }
 
-function msgTouchStart(e, idx) { longPressTimer = setTimeout(function() { showMsgMenu(e, idx); }, 500); }
-function msgTouchEnd() { if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; } }
+var longPressTimer = null;
+var longPressSaved = null;
+
+function msgTouchStart(e, idx) {
+    // 阻止iOS系统长按菜单
+    e.preventDefault();
+    // 保存坐标，因为异步回调里 e.touches 会消失
+    longPressSaved = {
+        x: e.touches[0].clientX,
+        y: e.touches[0].clientY,
+        idx: idx
+    };
+    longPressTimer = setTimeout(function() {
+        if (longPressSaved !== null) {
+            showMsgMenuAt(longPressSaved.x, longPressSaved.y, longPressSaved.idx);
+        }
+    }, 500);
+}
+
+function msgTouchEnd() {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+    longPressSaved = null;
+}
 
 function showMsgMenu(e, idx) {
     e.preventDefault();
@@ -927,6 +969,36 @@ function showMsgMenu(e, idx) {
     
     var x = e.touches ? e.touches[0].clientX : e.clientX;
     var y = e.touches ? e.touches[0].clientY : e.clientY;
+    menu.style.visibility = 'hidden';
+    menu.classList.add('active');
+    var mw = menu.offsetWidth, mh = menu.offsetHeight;
+    x = Math.max(10, Math.min(x, window.innerWidth - mw - 10));
+    y = Math.max(10, Math.min(y, window.innerHeight - mh - 10));
+    menu.style.left = x + 'px';
+    menu.style.top = y + 'px';
+    menu.style.visibility = 'visible';
+}
+
+function showMsgMenuAt(x, y, idx) {
+    selectedMsgIdx = idx;
+    var data = getAccData();
+    var charId = curChar ? curChar.id : respondingCharId;
+    var msg = data.chats[charId][idx];
+    if (!msg || msg.type === 'sys') return;
+
+    var menu = $('msgMenu');
+    var h = '';
+    if (msg.recalled) {
+        h = '<div class="msg-menu-item" onclick="viewRecalled('+idx+')">查看</div>';
+    } else {
+        h += '<div class="msg-menu-item" onclick="copyMsg()">复制</div>';
+        h += '<div class="msg-menu-item" onclick="quoteThisMsg()">引用</div>';
+        if (msg.type !== 'image' && msg.type !== 'voice') h += '<div class="msg-menu-item" onclick="editMsgContent()">编辑</div>';
+        h += '<div class="msg-menu-item" onclick="recallMsg()">撤回</div>';
+        h += '<div class="msg-menu-item danger" onclick="deleteMsg()">删除</div>';
+    }
+    menu.innerHTML = h;
+
     menu.style.visibility = 'hidden';
     menu.classList.add('active');
     var mw = menu.offsetWidth, mh = menu.offsetHeight;
@@ -963,45 +1035,6 @@ function quoteThisMsg() {
 }
 
 function cancelQuote() { quotedMsg = null; quotedIdx = -1; $('quotePreview').classList.remove('show'); }
-
-function editMsgContent() {
-    var data = getAccData();
-    var charId = curChar ? curChar.id : respondingCharId;
-    var msg = data.chats[charId][selectedMsgIdx];
-    if (!msg) { hideMsgMenu(); return; }
-    
-    // ✅ 关键修复：先保存索引到弹窗的dataset，再关闭菜单
-    $('editMsgModal').dataset.msgIdx = selectedMsgIdx;
-    $('editMsgModal').dataset.charId = charId;
-    $('editMsgText').value = msg.content || '';
-    hideMsgMenu();
-    openModal('editMsgModal');
-}
-
-function saveEditMsg() {
-    var content = $('editMsgText').value.trim();
-    if (!content) return toast('内容不能为空');
-    
-    var data = getAccData();
-    // ✅ 关键修复：从dataset读取保存的索引
-    var charId = $('editMsgModal').dataset.charId;
-    var msgIdx = parseInt($('editMsgModal').dataset.msgIdx);
-    
-    if (isNaN(msgIdx) || msgIdx < 0) {
-        closeModal('editMsgModal');
-        return toast('保存失败：索引无效');
-    }
-    
-    if (data.chats[charId] && data.chats[charId][msgIdx]) {
-        data.chats[charId][msgIdx].content = content;
-        save();
-        renderMsgs(false);
-        toast('已保存');
-    } else {
-        toast('保存失败：消息不存在');
-    }
-    closeModal('editMsgModal');
-}
 
 function recallMsg() {
     var data = getAccData();
@@ -1420,6 +1453,7 @@ function saveEditMsg() {
     }
     closeModal('editMsgModal');
 }
+
 function recognizeImage(imageData, callback) {
     var api = getApi2();
     // 如果副API不可用，降级到主API
