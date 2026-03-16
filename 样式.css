@@ -3484,8 +3484,6 @@ body {
 /* 通知横幅在最顶层 */
 #iosNotifyContainer { z-index: 30000 !important; }
 
-    border-top: 1px solid #E8E8E8 !important;
-}
 /* ========== 全局底部安全区统一修复 ========== */
 
 /* 所有页面容器取消自身 padding-bottom，交给内部元素处理 */
