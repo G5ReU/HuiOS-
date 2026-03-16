@@ -351,7 +351,7 @@ body {
         .func-item:active .func-icon { transform: scale(0.9); }
         .func-name { font-size: 10px; color: var(--text-gray); }
         
-.msg-menu { position: fixed; background: white; border-radius: 10px; box-shadow: var(--shadow-medium); z-index: 25000; display: none; }
+        .msg-menu { position: fixed; background: white; border-radius: 10px; box-shadow: var(--shadow-medium); z-index: 200; display: none; }
         .msg-menu.active { display: flex; animation: scaleIn 0.15s; }
         .msg-menu-item { padding: 10px 14px; font-size: 12px; cursor: pointer; border-right: 1px solid #f0f0f0; white-space: nowrap; }
         .msg-menu-item:last-child { border-right: none; }
@@ -3378,14 +3378,15 @@ body {
 
 /* 3. Dock 栏：这是你消失的关键！改用 fixed 锚定在安全区上方 */
 .home-dock {
-    position: fixed !important;
-    bottom: max(20px, env(safe-area-inset-bottom)) !important;
+    position: fixed !important; /* 改为 fixed 确保在浏览器底部也可见 */
+    bottom: max(20px, env(safe-area-inset-bottom)) !important; /* 动态适配黑条或浏览器 */
     left: 50% !important;
     transform: translateX(-50%) !important;
     width: 90% !important;
     max-width: 320px !important;
-    z-index: 9999 !important;
-    background: transparent !important;
+    z-index: 9999 !important; /* 确保层级最高 */
+    background: rgba(255, 255, 255, 0.4) !important; /* 确保背景可见 */
+    backdrop-filter: blur(15px) !important;
 }
 
 /* 4. 指示器（小圆点）：联动 Dock 向上移动 */
@@ -3436,119 +3437,4 @@ body {
 }
 #callBubble {
     z-index: 19001 !important;
-}
-/* ========== 层级统一修复 ========== */
-
-/* 所有全屏页面统一为 10000，确保盖住 dock */
-.publish-page,
-.group-page,
-.memory-page,
-.switch-account-page,
-.my-moments-page,
-.wb-detail-page,
-#huyMapPage,
-#myStickersPage,
-#gameHubPage,
-#vnGamePage,
-#twentyQPage,
-#emailPage,
-#tutorialPage,
-#memoPage,
-#healthPage,
-#themePage,
-#settingsPage,
-#worldbookPage,
-#chatPage,
-.full-page,
-.chatroom,
-.page {
-    z-index: 10000 !important;
-}
-
-/* dock 栏永远在主页层（低于任何全屏页面） */
-.home-dock {
-    z-index: 200 !important;
-}
-
-/* 弹窗层级保持在全屏页面之上 */
-.modal          { z-index: 20000 !important; }
-.choice-modal   { z-index: 20001 !important; }
-.error-modal    { z-index: 20002 !important; }
-.image-viewer   { z-index: 20003 !important; }
-.msg-menu       { z-index: 25000 !important; }
-
-/* 通话界面单独处理（需要压过全屏页面） */
-#callScreen { z-index: 19000 !important; }
-#callBubble { z-index: 19001 !important; }
-
-/* 通知横幅在最顶层 */
-#iosNotifyContainer { z-index: 30000 !important; }
-/* ========== 全局底部安全区统一修复 ========== */
-
-/* 所有页面容器取消自身 padding-bottom，交给内部元素处理 */
-.page,
-.chatroom,
-.full-page {
-    padding-bottom: 0 !important;
-}
-
-/* 所有页面内的主滚动体，底部留出安全区 */
-.s-body,
-.wb-entry-list,
-.worldbook-list,
-.contact-list,
-.moment-list,
-.group-list,
-.memory-list,
-.account-list,
-#wbEntryList,
-#groupList,
-#memoryList,
-#accountList,
-#wbList,
-#placeListContent,
-#heartsListScroll,
-#stickerGrid,
-#tqSetupView,
-.tq-setup,
-.tq-result,
-.email-body,
-#emailListWrap,
-#emailDetailWrap,
-.phone-app-body,
-.maps-app,
-.settings-app {
-    padding-bottom: calc(env(safe-area-inset-bottom) + 20px) !important;
-}
-
-/* HuyMap 页面内部滚动区 */
-#huyMapPage > div[style*="overflow-y"] {
-    padding-bottom: calc(env(safe-area-inset-bottom) + 20px) !important;
-}
-
-/* 底部有固定按钮/导航栏的页面，按钮本身贴底 */
-.bottom-nav,
-.input-bar,
-.memory-footer,
-.account-footer,
-.publish-header,
-.vn-input-area,
-.music-player,
-.phone-toolbar {
-    padding-bottom: max(12px, env(safe-area-inset-bottom)) !important;
-}
-
-/* full-page 底部操作区 */
-.full-page > div:last-child {
-    padding-bottom: max(16px, env(safe-area-inset-bottom)) !important;
-}
-
-/* 聊天输入框 */
-.input-bar {
-    padding-bottom: max(10px, env(safe-area-inset-bottom)) !important;
-}
-
-/* 通话界面底部 */
-#callScreen > div:last-child {
-    padding-bottom: max(12px, env(safe-area-inset-bottom)) !important;
 }
