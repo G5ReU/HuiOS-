@@ -3329,55 +3329,75 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; h
     background: #f8f8f8;
 }
 /* =================================================== */
-/* ▼▼▼ HuIOS: 温和解锁 Body方案 (修复排版与动画崩溃) ▼▼▼ */
+/* ▼▼▼ HuIOS: 物理边界钉死方案 (彻底解决底部裁剪) ▼▼▼ */
 /* =================================================== */
 
-/* 1. 解锁 Body：去掉 fixed，让浏览器自然计算高度 */
+/* 1. 放弃 height 计算，直接把 html 和 body 的物理边界锁死在屏幕内 */
 html, body {
-    height: auto !important;
-    min-height: 100% !important;
-    overflow: visible !important; 
-    background-color: var(--bg-cream) !important;
-    margin: 0 !important;
-    padding: 0 !important;
-}
-
-/* 2. 主页容器：作为文档底层，给自由高度，但兜底 100dvh */
-.home {
-    min-height: 100dvh !important;
-    height: auto !important;
-    position: relative !important; /* 恢复相对定位，不破坏排版 */
-    display: flex !important;
-    flex-direction: column !important;
-    padding-bottom: env(safe-area-inset-bottom) !important; /* 保护安全区 */
-    box-sizing: border-box !important;
-}
-
-/* 3. 恢复 Dock 栏原本的悬浮排版（居中、靠底） */
-.home-dock {
-    position: absolute !important;
-    bottom: env(safe-area-inset-bottom) !important;
-    left: 50% !important;
-    transform: translateX(-50%) !important;
-    margin: 0 !important;
-}
-
-/* 4. 核心修复：保护所有的二级页面（聊天室、个人主页等） */
-/* 必须用 fixed，否则无法覆盖在主页上方，也无法执行你的滑入动画 */
-.page, .chatroom, .full-page, .group-page, .memory-page, .switch-account-page, .my-moments-page, .wb-detail-page {
-    position: fixed !important; 
+    position: fixed !important;
     top: 0 !important;
     left: 0 !important;
     right: 0 !important;
     bottom: 0 !important;
-    height: 100% !important; /* 放弃 100dvh，用 100% 自动适应 fixed 容器 */
-    padding-bottom: env(safe-area-inset-bottom) !important;
+    width: 100% !important;
+    height: 100% !important;
+    overflow: hidden !important; /* 彻底禁止 body 级别出现滚动条 */
+    margin: 0 !important;
+    padding: 0 !important;
 }
 
-/* 5. 背景图：死死钉在屏幕上，不随主页可能的滑动而滑动 */
+/* 2. 主页容器：用 absolute 钉死，这样它会严格遵循 body 的物理边缘 */
+.home {
+    position: absolute !important;
+    top: 0 !important;
+    bottom: 0 !important; /* 核心：不写高度，直接写 bottom:0 */
+    left: 0 !important;
+    right: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    /* 重点：增加底部安全边距，并强制将背景颜色延展 */
+    padding-bottom: env(safe-area-inset-bottom) !important;
+    box-sizing: border-box !important;
+    z-index: 1;
+}
+
+/* 3. 背景图：同样钉死，保证不留白 */
 .home-bg {
     position: fixed !important;
     inset: 0 !important;
+    width: 100% !important;
     height: 100% !important;
     z-index: -1 !important;
+}
+
+/* 4. Dock 栏：不再使用 margin-top:auto，改用绝对定位确保它在安全区上方 */
+.home-dock {
+    position: absolute !important;
+    bottom: calc(env(safe-area-inset-bottom) + 15px) !important; /* 动态计算：安全区 + 15px 间距 */
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    width: 90% !important;
+    max-width: 280px !important;
+    z-index: 5 !important;
+}
+
+/* 5. 解决二级页面（聊天室、个人主页等）被切的问题 */
+.page, .chatroom, .full-page, .group-page, .memory-page, .switch-account-page, .my-moments-page, .wb-detail-page {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important; /* 钉死底部 */
+    height: auto !important; /* 覆盖掉之前的 100% */
+    padding-bottom: env(safe-area-inset-bottom) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    z-index: 100 !important;
+}
+
+/* 6. 特殊处理：确保主页的滑动区域（App图标区）不要顶到 Dock 栏 */
+.home-scroll-area {
+    flex: 1 !important;
+    height: auto !important;
+    margin-bottom: 80px !important; /* 给底部 Dock 栏预留物理空间 */
 }
