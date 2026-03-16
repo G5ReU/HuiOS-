@@ -20,7 +20,7 @@ const UPDATE_CONFIG = {
 // ========================================
 // 以下不需要修改
 // ========================================
- function() {
+(function() {   // ✅ 前面加一个 (
   const STORAGE_KEY = 'skipUpdateNotice_' + UPDATE_CONFIG.version;
 
   function shouldShow() {
