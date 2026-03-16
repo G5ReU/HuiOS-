@@ -3341,71 +3341,80 @@ body {
 #callLogsList > div:active {
     background: #f8f8f8;
 }
-/* =================================================== */
-/* ▼▼▼ HuIOS: 解锁式物理适配补丁 (终结被切/白边) ▼▼▼ */
-/* =================================================== */
 
-/* 1. 主容器：不再强求 100vh，而是利用 flex 自动填充 */
+/* ===== 层级与安全区修复（最终版）===== */
+
+/* 基础层级 */
+.home { z-index: 1; }
+.page { z-index: 10; }
+.chatroom { z-index: 20; }
+.publish-page { z-index: 50; }
+.modal { z-index: 200; }
+.choice-modal { z-index: 210; }
+.error-modal { z-index: 220; }
+.image-viewer { z-index: 300; }
+.toast { z-index: 1000; }
+.msg-menu { z-index: 1001; }
+
+/* 首页结构恢复（防止 dock 方块和不透明） */
 .home {
-    display: flex !important;
-    flex-direction: column !important;
-    min-height: 100vh !important;
-    min-height: 100dvh !important;
-    padding-top: env(safe-area-inset-top) !important;
-    /* 给底部的 Dock 留出物理呼吸空间，防止图标被遮挡 */
-    padding-bottom: calc(env(safe-area-inset-bottom) + 110px) !important; 
-    box-sizing: border-box !important;
-    position: relative !important;
+  height: 100dvh;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
 }
-
-/* 2. 背景图：必须 fixed，防止滚动时背景跟着走导致露白 */
 .home-bg {
-    position: fixed !important;
-    inset: 0 !important;
-    width: 100vw !important;
-    height: 100vh !important;
-    height: 100dvh !important;
-    z-index: -1 !important;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
 }
-
-/* 3. Dock 栏：这是你消失的关键！改用 fixed 锚定在安全区上方 */
-.home-dock {
-    position: fixed !important; /* 改为 fixed 确保在浏览器底部也可见 */
-    bottom: max(20px, env(safe-area-inset-bottom)) !important; /* 动态适配黑条或浏览器 */
-    left: 50% !important;
-    transform: translateX(-50%) !important;
-    width: 90% !important;
-    max-width: 320px !important;
-    z-index: 9999 !important; /* 确保层级最高 */
-    background: rgba(255, 255, 255, 0.4) !important; /* 确保背景可见 */
-    backdrop-filter: blur(15px) !important;
-}
-
-/* 4. 指示器（小圆点）：联动 Dock 向上移动 */
-.home-dots {
-    position: fixed !important;
-    bottom: calc(max(20px, env(safe-area-inset-bottom)) + 90px) !important;
-    left: 0;
-    right: 0;
-    z-index: 9998;
-}
-
-/* 5. 滚动区域：解锁高度，让图标能够自由上下滑动 */
 .home-scroll-area {
-    flex: 1 !important;
-    overflow-y: visible !important; /* 允许滚动 */
-    height: auto !important;
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.home-dock {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: max(10px, env(safe-area-inset-bottom));
+  z-index: 3;
+  width: 90%;
+  max-width: 280px;
+}
+.dock-inner {
+  background: rgba(128,128,128,0.25);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border-radius: 24px;
 }
 
-/* 6. 聊天、设置等全屏页面：必须重新锁死，防止在 PWA 里上下晃动 */
-.page, .chatroom, .full-page {
-    position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
-    height: 100% !important;
-    z-index: 10000 !important;
-    padding-bottom: env(safe-area-inset-bottom) !important;
-    background-color: var(--bg-cream) !important;
+/* 聊天页底部贴合修复 */
+.chatroom {
+  padding-bottom: 0 !important;
+}
+.input-bar {
+  padding-bottom: max(10px, env(safe-area-inset-bottom)) !important;
+}
+.bottom-nav {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* 发朋友圈层级抬高 */
+.publish-page {
+  z-index: 80 !important;
+}
+.publish-page.active {
+  display: flex;
+}
+
+/* 通知容器你写了 99999，会压一切，改低一点 */
+#iosNotifyContainer {
+  z-index: 1200 !important;
 }
