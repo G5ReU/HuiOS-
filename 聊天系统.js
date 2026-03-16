@@ -469,7 +469,7 @@ function renderMsgContent(m, idx) {
         var isFinished = (data.callLogs || []).some(function(l) {
             return l.charId === charIdForCheck && l.startTime >= m.time;
         });
-        var callHtml = '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(168,216,234,0.1);border-radius:12px;min-width:180px">';
+var callHtml = '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(168,216,234,0.1);border-radius:12px;min-width:220px">';
         callHtml += '<span style="font-size:22px">' + icon + '</span>';
         callHtml += '<div style="flex:1"><div style="font-size:14px;font-weight:500">' + label + '</div>';
         if (isFinished) {
@@ -479,8 +479,8 @@ function renderMsgContent(m, idx) {
             callHtml += '<div style="font-size:12px;color:var(--text-gray);margin-top:2px">' + (m.callReason || '邀请你通话') + '</div>';
             callHtml += '</div></div>';
             callHtml += '<div style="display:flex;gap:8px;margin-top:8px">';
-            callHtml += '<button onclick="acceptAICall(\'' + esc(m.id) + '\')" style="flex:1;padding:8px;border:none;border-radius:10px;background:#4CAF50;color:white;font-size:13px;cursor:pointer">接听</button>';
-            callHtml += '<button onclick="rejectAICall(\'' + esc(m.id) + '\')" style="flex:1;padding:8px;border:none;border-radius:10px;background:#f0f0f0;color:#666;font-size:13px;cursor:pointer">拒绝</button>';
+callHtml += '<button onclick="acceptAICall(\'' + esc(m.id) + '\')" style="flex:1;padding:14px 8px;border:none;border-radius:10px;background:#4CAF50;color:white;font-size:14px;cursor:pointer">接听</button>';
+callHtml += '<button onclick="rejectAICall(\'' + esc(m.id) + '\')" style="flex:1;padding:14px 8px;border:none;border-radius:10px;background:#f0f0f0;color:#666;font-size:14px;cursor:pointer">拒绝</button>';
             callHtml += '</div>';
         } else {
             callHtml += '<div style="font-size:12px;color:var(--text-gray);margin-top:2px">等待接听...</div>';
