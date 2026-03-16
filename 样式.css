@@ -3484,61 +3484,100 @@ body {
 /* 通知横幅在最顶层 */
 #iosNotifyContainer { z-index: 30000 !important; }
 
-/* ========== Chat页面导航栏贴底修复 ========== */
-
-/* chatPage 本身已经是 fixed 全屏，内部需要正确分配高度 */
+/* ========== Chat页面导航栏贴底修复（最终版） ========== */
 #chatPage {
-    display: flex !important;
-    flex-direction: column !important;
-}
-
-#chatContent {
-    flex: 1 !important;
-    display: flex !important;
-    flex-direction: column !important;
-    overflow: hidden !important;
-    min-height: 0 !important;
-}
-
-/* nav-pane 撑满剩余空间，bottom-nav 自然沉底 */
-#chatContent .nav-pane {
-    flex: 1 !important;
-    overflow-y: auto !important;
-    min-height: 0 !important;
-}
-
-/* 导航栏固定在底部，适配安全区 */
-#chatContent .bottom-nav {
-    flex-shrink: 0 !important;
-    padding-bottom: max(8px, env(safe-area-inset-bottom)) !important;
-}
-/* ========== Chat导航栏贴底修复 ========== */
-
-#chatPage {
-    height: auto !important;   /* 取消 height:100% 的干扰 */
-}
-
-#chatContent {
-    position: absolute !important;
-    top: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
     height: auto !important;
-    display: flex !important;   /* 覆盖 display:none 之外的状态 */
+    display: flex !important;
+    flex-direction: column !important;
+}
+#chatPage > .header { flex-shrink: 0 !important; }
+#noAccView { flex-shrink: 0 !important; }
+#chatContent {
+    position: static !important;
+    flex: 1 !important;
+    display: flex !important;
     flex-direction: column !important;
     overflow: hidden !important;
+    min-height: 0 !important;
+    height: 0 !important;
 }
-
 #chatContent .nav-pane {
     flex: 1 !important;
     overflow-y: auto !important;
     min-height: 0 !important;
 }
-
 #chatContent .bottom-nav {
     flex-shrink: 0 !important;
     background: white !important;
     padding-bottom: max(16px, env(safe-area-inset-bottom)) !important;
     border-top: 1px solid #E8E8E8 !important;
+}
+/* ========== 全局底部安全区统一修复 ========== */
+
+/* 所有页面容器取消自身 padding-bottom，交给内部元素处理 */
+.page,
+.chatroom,
+.full-page {
+    padding-bottom: 0 !important;
+}
+
+/* 所有页面内的主滚动体，底部留出安全区 */
+.s-body,
+.wb-entry-list,
+.worldbook-list,
+.contact-list,
+.moment-list,
+.group-list,
+.memory-list,
+.account-list,
+#wbEntryList,
+#groupList,
+#memoryList,
+#accountList,
+#wbList,
+#placeListContent,
+#heartsListScroll,
+#stickerGrid,
+#tqSetupView,
+.tq-setup,
+.tq-result,
+.email-body,
+#emailListWrap,
+#emailDetailWrap,
+.phone-app-body,
+.maps-app,
+.settings-app {
+    padding-bottom: calc(env(safe-area-inset-bottom) + 20px) !important;
+}
+
+/* HuyMap 页面内部滚动区 */
+#huyMapPage > div[style*="overflow-y"] {
+    padding-bottom: calc(env(safe-area-inset-bottom) + 20px) !important;
+}
+
+/* 底部有固定按钮/导航栏的页面，按钮本身贴底 */
+.bottom-nav,
+.input-bar,
+.memory-footer,
+.account-footer,
+.publish-header,
+.vn-input-area,
+.music-player,
+.phone-toolbar {
+    padding-bottom: max(12px, env(safe-area-inset-bottom)) !important;
+}
+
+/* full-page 底部操作区 */
+.full-page > div:last-child {
+    padding-bottom: max(16px, env(safe-area-inset-bottom)) !important;
+}
+
+/* 聊天输入框 */
+.input-bar {
+    padding-bottom: max(10px, env(safe-area-inset-bottom)) !important;
+}
+
+/* 通话界面底部 */
+#callScreen > div:last-child {
+    padding-bottom: max(12px, env(safe-area-inset-bottom)) !important;
 }
