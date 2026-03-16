@@ -460,34 +460,33 @@ function getBubblePosition(idx, role) {
 
 function renderMsgContent(m, idx) {
     var h = '';
-    if (m.type === 'call_invite') {
+        if (m.type === 'call_invite') {
         var isFromAI = m.callFromAI;
         var icon = m.callType === 'video' ? '📹' : '📞';
         var label = m.callType === 'video' ? '视频通话' : '语音通话';
         var data = getAccData();
         var charIdForCheck = isFromAI ? m.charId : (curChar ? curChar.id : null);
-        var callLogs = (data.callLogs || []);
-        var isFinished = callLogs.some(function(l) {
+        var isFinished = (data.callLogs || []).some(function(l) {
             return l.charId === charIdForCheck && l.startTime >= m.time;
         });
-        var h = '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(168,216,234,0.1);border-radius:12px;min-width:180px">';
-        h += '<span style="font-size:22px">' + icon + '</span>';
-        h += '<div style="flex:1"><div style="font-size:14px;font-weight:500">' + label + '</div>';
+        var callHtml = '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(168,216,234,0.1);border-radius:12px;min-width:180px">';
+        callHtml += '<span style="font-size:22px">' + icon + '</span>';
+        callHtml += '<div style="flex:1"><div style="font-size:14px;font-weight:500">' + label + '</div>';
         if (isFinished) {
-            h += '<div style="font-size:12px;color:var(--text-gray);margin-top:2px">通话已完成</div>';
-            h += '</div></div>';
+            callHtml += '<div style="font-size:12px;color:var(--text-gray);margin-top:2px">通话已完成</div>';
+            callHtml += '</div></div>';
         } else if (isFromAI) {
-            h += '<div style="font-size:12px;color:var(--text-gray);margin-top:2px">' + (m.callReason || '邀请你通话') + '</div>';
-            h += '</div></div>';
-            h += '<div style="display:flex;gap:8px;margin-top:8px">';
-            h += '<button onclick="acceptAICall(\'' + esc(m.id) + '\')" style="flex:1;padding:8px;border:none;border-radius:10px;background:#4CAF50;color:white;font-size:13px;cursor:pointer">接听</button>';
-            h += '<button onclick="rejectAICall(\'' + esc(m.id) + '\')" style="flex:1;padding:8px;border:none;border-radius:10px;background:#f0f0f0;color:#666;font-size:13px;cursor:pointer">拒绝</button>';
-            h += '</div>';
+            callHtml += '<div style="font-size:12px;color:var(--text-gray);margin-top:2px">' + (m.callReason || '邀请你通话') + '</div>';
+            callHtml += '</div></div>';
+            callHtml += '<div style="display:flex;gap:8px;margin-top:8px">';
+            callHtml += '<button onclick="acceptAICall(\'' + esc(m.id) + '\')" style="flex:1;padding:8px;border:none;border-radius:10px;background:#4CAF50;color:white;font-size:13px;cursor:pointer">接听</button>';
+            callHtml += '<button onclick="rejectAICall(\'' + esc(m.id) + '\')" style="flex:1;padding:8px;border:none;border-radius:10px;background:#f0f0f0;color:#666;font-size:13px;cursor:pointer">拒绝</button>';
+            callHtml += '</div>';
         } else {
-            h += '<div style="font-size:12px;color:var(--text-gray);margin-top:2px">等待接听...</div>';
-            h += '</div></div>';
+            callHtml += '<div style="font-size:12px;color:var(--text-gray);margin-top:2px">等待接听...</div>';
+            callHtml += '</div></div>';
         }
-        return h;
+        return callHtml;
     }
 
     if (m.type === 'call') {
