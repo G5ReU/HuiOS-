@@ -3484,31 +3484,6 @@ body {
 /* 通知横幅在最顶层 */
 #iosNotifyContainer { z-index: 30000 !important; }
 
-/* ========== Chat页面导航栏贴底修复（最终版） ========== */
-#chatPage {
-    display: flex !important;
-    flex-direction: column !important;
-}
-#chatPage > .header { flex-shrink: 0 !important; }
-#noAccView { flex-shrink: 0 !important; }
-#chatContent {
-    position: static !important;
-    flex: 1 !important;
-    display: flex !important;
-    flex-direction: column !important;
-    overflow: hidden !important;
-    min-height: 0 !important;
-    height: 0 !important;
-}
-#chatContent .nav-pane {
-    flex: 1 !important;
-    overflow-y: auto !important;
-    min-height: 0 !important;
-}
-#chatContent .bottom-nav {
-    flex-shrink: 0 !important;
-    background: white !important;
-    padding-bottom: max(16px, env(safe-area-inset-bottom)) !important;
     border-top: 1px solid #E8E8E8 !important;
 }
 /* ========== 全局底部安全区统一修复 ========== */
