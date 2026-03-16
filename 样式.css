@@ -3486,7 +3486,6 @@ body {
 
 /* ========== Chat页面导航栏贴底修复（最终版） ========== */
 #chatPage {
-    height: auto !important;
     display: flex !important;
     flex-direction: column !important;
 }
