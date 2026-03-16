@@ -478,9 +478,9 @@ var callHtml = '<div style="display:flex;align-items:center;gap:10px;padding:10p
         } else if (isFromAI) {
             callHtml += '<div style="font-size:12px;color:var(--text-gray);margin-top:2px">' + (m.callReason || '邀请你通话') + '</div>';
             callHtml += '</div></div>';
-            callHtml += '<div style="display:flex;gap:8px;margin-top:8px">';
-callHtml += '<button onclick="acceptAICall(\'' + esc(m.id) + '\')" style="flex:1;padding:14px 8px;border:none;border-radius:10px;background:#4CAF50;color:white;font-size:14px;cursor:pointer">接听</button>';
-callHtml += '<button onclick="rejectAICall(\'' + esc(m.id) + '\')" style="flex:1;padding:14px 8px;border:none;border-radius:10px;background:#f0f0f0;color:#666;font-size:14px;cursor:pointer">拒绝</button>';
+            callHtml += '<div ontouchstart="event.stopPropagation()" style="display:flex;gap:8px;margin-top:8px">';
+callHtml += '<button ontouchstart="event.stopPropagation()" onclick="acceptAICall(\'' + esc(m.id) + '\')" style="flex:1;padding:14px 8px;border:none;border-radius:10px;background:#4CAF50;color:white;font-size:14px;cursor:pointer">接听</button>';
+callHtml += '<button ontouchstart="event.stopPropagation()" onclick="rejectAICall(\'' + esc(m.id) + '\')" style="flex:1;padding:14px 8px;border:none;border-radius:10px;background:#f0f0f0;color:#666;font-size:14px;cursor:pointer">拒绝</button>';
             callHtml += '</div>';
         } else {
             callHtml += '<div style="font-size:12px;color:var(--text-gray);margin-top:2px">等待接听...</div>';
