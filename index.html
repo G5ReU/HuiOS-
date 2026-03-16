@@ -2007,7 +2007,7 @@ window.onerror = function(msg, src, line, col, err) {
 <div id="callScreen" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:10000;flex-direction:column;background:#1a1a2e">
 
     <!-- 顶部栏 -->
-    <div id="callTopBar" style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;flex-shrink:0">
+<div id="callTopBar" style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;padding-top:calc(16px + env(safe-area-inset-top));flex-shrink:0">
         <div id="callTypeLabel" style="font-size:13px;color:rgba(255,255,255,0.6);display:flex;align-items:center;gap:6px">
             <div style="width:8px;height:8px;border-radius:50%;background:#4CAF50"></div>
             语音通话
