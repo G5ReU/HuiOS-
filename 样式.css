@@ -3329,58 +3329,55 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; h
     background: #f8f8f8;
 }
 /* =================================================== */
-/* ▼▼▼ HuIOS: 解锁 Body + 内部 100dvh 限制方案 ▼▼▼ */
+/* ▼▼▼ HuIOS: 温和解锁 Body方案 (修复排版与动画崩溃) ▼▼▼ */
 /* =================================================== */
 
-/* 1. 解锁 Body：去掉 fixed 和 overflow: hidden，让网页变“自由” */
+/* 1. 解锁 Body：去掉 fixed，让浏览器自然计算高度 */
 html, body {
     height: auto !important;
-    min-height: 100dvh !important;
-    overflow: visible !important; /* 解锁滑动，让浏览器自然计算高度 */
-    position: static !important;
+    min-height: 100% !important;
+    overflow: visible !important; 
     background-color: var(--bg-cream) !important;
     margin: 0 !important;
     padding: 0 !important;
 }
 
-/* 2. 限制内容：给 App 内部的所有主容器加一个 h-[100dvh] 的框 */
-.home, .page, .chatroom, .full-page, .group-page, .memory-page, .switch-account-page, .my-moments-page, .wb-detail-page {
-    height: 100dvh !important;
-    position: absolute !important; /* 绝对定位，不影响 body 的自由 */
-    top: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: auto !important;
-    overflow: hidden !important; /* 框内部不允许溢出，防止出现双滚动条 */
+/* 2. 主页容器：作为文档底层，给自由高度，但兜底 100dvh */
+.home {
+    min-height: 100dvh !important;
+    height: auto !important;
+    position: relative !important; /* 恢复相对定位，不破坏排版 */
     display: flex !important;
     flex-direction: column !important;
+    padding-bottom: env(safe-area-inset-bottom) !important; /* 保护安全区 */
     box-sizing: border-box !important;
-    padding-bottom: env(safe-area-inset-bottom) !important; /* 保护底部黑条安全区 */
 }
 
-/* 3. 背景图跟着这个 100dvh 的框走，绝对贴合 */
-.home-bg {
+/* 3. 恢复 Dock 栏原本的悬浮排版（居中、靠底） */
+.home-dock {
     position: absolute !important;
+    bottom: env(safe-area-inset-bottom) !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    margin: 0 !important;
+}
+
+/* 4. 核心修复：保护所有的二级页面（聊天室、个人主页等） */
+/* 必须用 fixed，否则无法覆盖在主页上方，也无法执行你的滑入动画 */
+.page, .chatroom, .full-page, .group-page, .memory-page, .switch-account-page, .my-moments-page, .wb-detail-page {
+    position: fixed !important; 
     top: 0 !important;
     left: 0 !important;
     right: 0 !important;
     bottom: 0 !important;
-    height: 100% !important; 
+    height: 100% !important; /* 放弃 100dvh，用 100% 自动适应 fixed 容器 */
+    padding-bottom: env(safe-area-inset-bottom) !important;
+}
+
+/* 5. 背景图：死死钉在屏幕上，不随主页可能的滑动而滑动 */
+.home-bg {
+    position: fixed !important;
+    inset: 0 !important;
+    height: 100% !important;
     z-index: -1 !important;
-}
-
-/* 4. Dock 栏自然沉底 */
-.home-dock {
-    position: static !important; /* 取消原来的 absolute */
-    margin-top: auto !important; /* 用 auto 把自己推到容器最底部 */
-    margin-bottom: 5px !important; /* 离底部留一点点呼吸感 */
-    transform: none !important;
-}
-.home-dock .dock-inner {
-    margin: 0 auto; /* 保证内部居中 */
-}
-
-/* 5. 聊天室输入框底部保护 */
-#chat-input-area {
-    padding-bottom: calc(8px + env(safe-area-inset-bottom)) !important;
 }
