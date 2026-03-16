@@ -3345,19 +3345,6 @@ html, body {
     min-height: 100%; 
     display: flex;
     flex-direction: column;
-    /* 唯一的关键点：给底部留出一个小横条的安全距离 */
-    padding-bottom: env(safe-area-inset-bottom);
-}
-
-/* 3. 背景图：简单铺满，不随内容滚动 */
-.home-bg {
-    position: fixed;
-    inset: 0;
-    z-index: -1;
-    /* 这里多加 50px 高度并向下偏移，是为了彻底解决底部那一点点缝隙的视觉问题 */
-    height: calc(100% + 50px);
-    background-color: var(--bg-cream); /* 没加载图时的底色 */
-}
 
 /* 4. Dock 栏：自然悬浮在底部 */
 .home-dock {
