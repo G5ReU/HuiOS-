@@ -3437,3 +3437,78 @@ body {
 #callBubble {
     z-index: 19001 !important;
 }
+/* ========== 层级统一修复 ========== */
+
+/* 所有全屏页面统一为 10000，确保盖住 dock */
+.publish-page,
+.group-page,
+.memory-page,
+.switch-account-page,
+.my-moments-page,
+.wb-detail-page,
+#huyMapPage,
+#myStickersPage,
+#gameHubPage,
+#vnGamePage,
+#twentyQPage,
+#emailPage,
+#tutorialPage,
+#memoPage,
+#healthPage,
+#themePage,
+#settingsPage,
+#worldbookPage,
+#chatPage,
+.full-page,
+.chatroom,
+.page {
+    z-index: 10000 !important;
+}
+
+/* dock 栏永远在主页层（低于任何全屏页面） */
+.home-dock {
+    z-index: 200 !important;
+}
+
+/* 弹窗层级保持在全屏页面之上 */
+.modal          { z-index: 20000 !important; }
+.choice-modal   { z-index: 20001 !important; }
+.error-modal    { z-index: 20002 !important; }
+.image-viewer   { z-index: 20003 !important; }
+.msg-menu       { z-index: 25000 !important; }
+
+/* 通话界面单独处理（需要压过全屏页面） */
+#callScreen { z-index: 19000 !important; }
+#callBubble { z-index: 19001 !important; }
+
+/* 通知横幅在最顶层 */
+#iosNotifyContainer { z-index: 30000 !important; }
+
+/* ========== Chat页面导航栏贴底修复 ========== */
+
+/* chatPage 本身已经是 fixed 全屏，内部需要正确分配高度 */
+#chatPage {
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+#chatContent {
+    flex: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    min-height: 0 !important;
+}
+
+/* nav-pane 撑满剩余空间，bottom-nav 自然沉底 */
+#chatContent .nav-pane {
+    flex: 1 !important;
+    overflow-y: auto !important;
+    min-height: 0 !important;
+}
+
+/* 导航栏固定在底部，适配安全区 */
+#chatContent .bottom-nav {
+    flex-shrink: 0 !important;
+    padding-bottom: max(8px, env(safe-area-inset-bottom)) !important;
+}
