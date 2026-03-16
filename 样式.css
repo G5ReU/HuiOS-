@@ -3329,67 +3329,38 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; h
     background: #f8f8f8;
 }
 /* =================================================== */
-/* ▼▼▼ HuIOS: 仿 EPhone 稳定版布局 (不锁定滑动) ▼▼▼ */
+/* ▼▼▼ HuIOS: 最简回归方案 (不做任何复杂限制) ▼▼▼ */
 /* =================================================== */
 
-/* 1. 根节点放弃 dvh，改用最稳的 100% */
-html {
+/* 1. 让最外层自然撑满 */
+html, body {
     height: 100%;
-    /* 允许页面回弹，这样切回来如果位移了，手滑一下就能弹回原位 */
-    overflow: auto; 
-    -webkit-overflow-scrolling: touch;
-}
-
-body {
     margin: 0;
-    padding: 0;
-    width: 100%;
-    /* 核心修改：使用 -webkit-fill-available 是 iOS 的终极救星 */
-    height: 100%;
-    height: -webkit-fill-available; 
-    overflow: auto;
-    background-color: transparent !important; /* 方便颜色过渡 */
+    background-color: transparent; /* 背景设为透明，方便颜色过渡 */
+    overflow: auto; /* 允许自然滚动，不锁死 */
 }
 
-/* 2. 主容器 .home 调整 */
+/* 2. 主页面容器：只给高度，不给限制 */
 .home {
-    /* 放弃写死 100dvh，改用相对视口高度 */
-    height: 100vh;
-    /* 关键：使用 flex 布局但不要让内容撑破视口 */
+    min-height: 100%; 
     display: flex;
     flex-direction: column;
-    position: relative;
-    /* 底部安全区：参考你朋友的做法，只在容器内部留空，不压缩容器本身 */
+    /* 唯一的关键点：给底部留出一个小横条的安全距离 */
     padding-bottom: env(safe-area-inset-bottom);
-    box-sizing: border-box;
 }
 
-/* 3. 修正你的背景层，确保它永远铺满，不随内容晃动 */
+/* 3. 背景图：简单铺满，不随内容滚动 */
 .home-bg {
-    position: fixed; /* 改为 fixed，哪怕页面在滚，背景也不动 */
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    /* 稍微往下延伸一点点，防止 iOS 橡皮筋回弹时露白 */
-    padding-bottom: 100px; 
-    margin-bottom: -100px;
+    position: fixed;
+    inset: 0;
     z-index: -1;
+    /* 这里多加 50px 高度并向下偏移，是为了彻底解决底部那一点点缝隙的视觉问题 */
+    height: calc(100% + 50px);
+    background-color: var(--bg-cream); /* 没加载图时的底色 */
 }
 
-/* 4. 修正 Dock 栏位置 */
+/* 4. Dock 栏：自然悬浮在底部 */
 .home-dock {
-    /* 确保 Dock 钉在屏幕底部安全区上方 */
-    position: absolute;
-    bottom: env(safe-area-inset-bottom);
-    left: 50%;
-    transform: translateX(-50%);
-    margin-bottom: 10px; /* 稍微往上提一点点，更好看 */
-}
-
-/* 5. 聊天室和全屏页也做同样的稳定性适配 */
-.chatroom, .page {
-    height: 100%;
-    height: -webkit-fill-available;
-    bottom: 0 !important;
+    margin-top: auto; /* 把它推到容器底部 */
+    margin-bottom: 10px; /* 离底部留一点呼吸感 */
 }
