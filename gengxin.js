@@ -20,7 +20,7 @@ const UPDATE_CONFIG = {
 // ========================================
 // 以下不需要修改
 // ========================================
-(function() {   // ✅ 前面加一个 (
+(function() {
   const STORAGE_KEY = 'skipUpdateNotice_' + UPDATE_CONFIG.version;
 
   function shouldShow() {
@@ -72,7 +72,6 @@ const UPDATE_CONFIG = {
         transform: translateY(16px);
         transition: transform 0.25s ease;
       ">
-        <!-- 顶部版本号 -->
         <div style="
           padding: 20px 20px 14px;
           border-bottom: 1px solid #f0f0f0;
@@ -93,7 +92,6 @@ const UPDATE_CONFIG = {
           <div style="font-size: 17px; font-weight: 700; color: #222;">更新公告</div>
         </div>
 
-        <!-- 正文（可滚动） -->
         <div style="
           flex: 1;
           overflow-y: auto;
@@ -105,7 +103,6 @@ const UPDATE_CONFIG = {
           -webkit-overflow-scrolling: touch;
         ">${escapeHtml(UPDATE_CONFIG.content)}</div>
 
-        <!-- 底部按钮 -->
         <div style="
           display: grid;
           grid-template-columns: 1fr 1fr;
@@ -138,14 +135,12 @@ const UPDATE_CONFIG = {
 
     document.body.appendChild(mask);
 
-    // 入场动画
     requestAnimationFrame(() => {
       mask.style.opacity = '1';
       const box = document.getElementById('updateNoticeBox');
       if (box) box.style.transform = 'translateY(0)';
     });
 
-    // 点击遮罩关闭
     mask.addEventListener('click', function(e) {
       if (e.target === mask) closeNotice();
     });
@@ -167,7 +162,6 @@ const UPDATE_CONFIG = {
       .replace(/>/g, '&gt;');
   }
 
-  // 等页面加载完再弹
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', showNotice);
   } else {
