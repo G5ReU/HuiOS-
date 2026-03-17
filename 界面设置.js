@@ -1034,7 +1034,14 @@ function onNotifyToggle(checked) {
 
 // 发送测试通知
 function sendTestNotify() {
-    pushNotify('HuIOS', '测试通知发送成功！', { tag: 'test' });
+    if (Notification.permission === 'granted') {
+        new Notification('HuIOS', {
+            body: '测试通知发送成功！',
+            icon: ''
+        });
+    } else {
+        toast('通知权限未授权');
+    }
 }
 
 // 核心：通过 SW 推送通知（供其他模块调用）
@@ -1046,6 +1053,16 @@ function pushNotify(title, body, opts) {
     var chatroom = document.getElementById('chatroom');
     if (chatroom && chatroom.classList.contains('active')) return;
 
+    // 直接用 Notification API，不依赖 SW
+    if (Notification.permission === 'granted') {
+        new Notification(title, {
+            body: body,
+            icon: opts.icon || '',
+            tag: opts.tag || 'huios-msg'
+        });
+        return;
+    }
+}
     function doPost(reg) {
         // 优先用 active，其次用 waiting，其次用 installing
         var sw = reg.active || reg.waiting || reg.installing;
