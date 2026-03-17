@@ -480,7 +480,7 @@ function openPhoneApp(appId) {
   if (!app) return;
   
   win.innerHTML = `
-    <div class="phone-app-header" style="background:${app.color}">
+    <div class="phone-app-header" style="background:${app.color};padding-top:calc(14px + env(safe-area-inset-top))">
       <button class="phone-back-btn" onclick="closePhoneApp()">←</button>
       <span class="phone-app-title">${app.name}</span>
       <button class="phone-app-menu-btn" onclick="openPhoneAppMenu('${appId}')">⋮</button>
@@ -3996,7 +3996,7 @@ if (!app.generated) {
   if (!win) return;
 
     win.innerHTML = `
-    <div class="phone-app-header" style="background:${app.color || '#888'}">
+    <div class="phone-app-header" style="background:${app.color || '#888'};padding-top:calc(14px + env(safe-area-inset-top))">
       <button class="phone-back-btn" onclick="closePhoneApp()">←</button>
       <span class="phone-app-title">${app.content?.title || app.name}</span>
       <div style="display:flex;gap:4px">

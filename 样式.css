@@ -2343,6 +2343,7 @@ body {
   display: flex;
   align-items: center;
   padding: 14px 16px;
+  padding-top: calc(14px + env(safe-area-inset-top));
   gap: 12px;
 }
 .phone-back-btn {
