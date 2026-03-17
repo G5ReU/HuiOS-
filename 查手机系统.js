@@ -114,7 +114,7 @@ function openPhone(charId) {
   page.innerHTML = `
     <div class="phone-container">
       <!-- 状态栏 -->
-      <div class="phone-status-bar">
+<div class="phone-status-bar" style="padding-top:calc(12px + env(safe-area-inset-top))">
         <span class="phone-time">${getTimeStr()}</span>
         <div class="phone-status-icons">
           <span>📶</span>
@@ -429,7 +429,7 @@ async function generateWidgetContent(type) {
 }
 
 function buildWidgetPrompt(type, char, recent) {
-  const chatText = recent.map(m => `${m.role === 'user' ? '用户' : char.name}: ${m.content}`).join('\n');
+ const chatText = recent.map(m => `${m.role === 'user' ? '用户' : char.realName}: ${m.content}`).join('\n');
   
   const templates = {
     weather: `返回JSON：{"icon":"天气emoji","temp":温度数字,"desc":"天气描述","city":"城市名"}`,
@@ -442,7 +442,7 @@ function buildWidgetPrompt(type, char, recent) {
     photo: `返回JSON：{"photos":[{"desc":"照片描述"},{"desc":"照片描述"},{"desc":"照片描述"}]}`
   };
   
-  return `你是${char.name}。根据以下信息生成手机小组件内容。
+  return `你是${char.realName}。根据以下信息生成手机小组件内容。
 
 【角色人设】
 ${char.persona || '无'}
@@ -633,7 +633,7 @@ if (appId === 'taobao') {
 }
 
 function buildAppPrompt(appId, char, recent) {
-  const chatText = recent.map(m => `${m.role === 'user' ? '用户' : char.name}: ${m.content}`).join('\n');
+const chatText = recent.map(m => `${m.role === 'user' ? '用户' : char.realName}: ${m.content}`).join('\n');
   
   const templates = {
     wechat: `生成微信内容，返回JSON：
@@ -750,7 +750,7 @@ history浏览记录5-8条，cart购物车2-4条，orders订单3-5条，favorites
 }`
   };
   
-  return `你是${char.name}。根据以下信息生成手机${PHONE_APPS.find(a => a.id === appId)?.name}的内容。
+  return `你是${char.realName}。根据以下信息生成手机${PHONE_APPS.find(a => a.id === appId)?.name}的内容。
 
 【角色人设】
 ${char.persona || '无'}
@@ -2868,7 +2868,7 @@ async function generateBrowserPageContent(page, idx, listKey) {
 
   const prompt = `你是一个手机网页渲染器。根据以下信息生成一个仿真的手机网页HTML片段。
 
-【角色】${char?.name || '用户'}
+【角色】${char?.realName || '用户'}
 【网页标题】${page.title}
 【网页URL】${page.url || ''}
 【角色人设】${char?.persona || '无'}
@@ -3079,9 +3079,9 @@ function openTiebaPost(idx) {
           <div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#614BF7,#9b7ff7);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">
             ${char?.avatar && char.avatar.length > 2 ? `<img src="${char.avatar}" style="width:100%;height:100%;border-radius:50%;object-fit:cover">` : (char?.avatar || '🙂')}
           </div>
-          <div>
-            <div style="font-size:14px;font-weight:600;color:#614BF7">${char?.displayName || char?.name || '楼主'}</div>
-            <div style="font-size:11px;color:#bbb">楼主 · ${post.time}</div>
+            <div style="flex:1">
+            <div style="font-size:14px;font-weight:600;color:#614BF7">${char?.displayName || char?.realName || '楼主'}</div>
+            <div style="font-size:11px;color:#bbb">${post.time}</div>
           </div>
           <span style="margin-left:auto;font-size:12px;color:white;background:#614BF7;padding:2px 8px;border-radius:10px">1楼</span>
         </div>
@@ -3105,8 +3105,8 @@ function openTiebaPost(idx) {
                   ? (char?.avatar && char.avatar.length > 2 ? `<img src="${char.avatar}" style="width:100%;height:100%;border-radius:50%;object-fit:cover">` : (char?.avatar || '🙂'))
                   : (cm.avatar || '👤')}
               </div>
-              <div style="flex:1">
-                <div style="font-size:13px;font-weight:600;color:${cm.isAuthor ? '#614BF7' : '#333'}">${cm.isAuthor ? (char?.displayName || char?.name || '楼主') : cm.name}${cm.isAuthor ? ' (楼主)' : ''}</div>
+                           <div style="flex:1">
+                <div style="font-size:13px;font-weight:600;color:${cm.isAuthor ? '#614BF7' : '#333'}">${cm.isAuthor ? (char?.displayName || char?.realName || '楼主') : cm.name}${cm.isAuthor ? ' (楼主)' : ''}</div>
                 <div style="font-size:11px;color:#bbb">${cm.time}</div>
               </div>
               <span style="font-size:12px;color:#bbb">${ci + 2}楼</span>
@@ -3803,11 +3803,9 @@ Promise.all(apps.map((_, i) => generateAIAppContent(i)));
 
 // 调用AI决定生成哪些应用
 async function generateAIApps(char, recent) {
-  const chatText = recent.map(m =>
-    `${m.role === 'user' ? '用户' : char.name}: ${m.content}`
-  ).join('\n');
+const chatText = recent.map(m => `${m.role === 'user' ? '用户' : char.realName}: ${m.content}`).join('\n');
 
-  const prompt = `你是${char.name}。根据角色人设和聊天记录，决定这个角色手机上还装了哪些有趣的应用。
+  const prompt = `你是${char.realName}。根据角色人设和聊天记录，决定这个角色手机上还装了哪些有趣的应用。
 
 【角色人设】
 ${char.persona || '无'}
@@ -3859,15 +3857,14 @@ async function generateAIAppContent(idx) {
   const char = getAccData().chars.find(c => c.id === currentPhoneCharId);
   const chats = getAccData().chats[currentPhoneCharId] || [];
   const recent = chats.slice(-50);
-  const chatText = recent.map(m =>
-    `${m.role === 'user' ? '用户' : char.name}: ${m.content}`
-  ).join('\n');
+// 改后
+const chatText = recent.map(m => `${m.role === 'user' ? '用户' : char.realName}: ${m.content}`).join('\n');
 
   const polliKey = D.settings.polliKey || '';
 const polliModel = D.settings.polliModel || 'flux';
 const keyParam = polliKey ? `&key=${encodeURIComponent(polliKey)}` : '';
 
-const prompt = `你是${char.name}。为手机应用「${app.name}」（${app.desc}）生成完整的HTML页面内容。
+const prompt = `你是${char.realName}。为手机应用「${app.name}」（${app.desc}）生成完整的HTML页面内容。
 
 【角色人设】
 ${char.persona || '无'}
@@ -4248,9 +4245,7 @@ async function appendAIAppContent(idx) {
   const char = getAccData().chars.find(c => c.id === currentPhoneCharId);
   const chats = getAccData().chats[currentPhoneCharId] || [];
   const recent = chats.slice(-50);
-  const chatText = recent.map(m =>
-    `${m.role === 'user' ? '用户' : char.name}: ${m.content}`
-  ).join('\n');
+const chatText = recent.map(m => `${m.role === 'user' ? '用户' : char.realName}: ${m.content}`).join('\n');
 
   const polliKey = D.settings.polliKey || '';
   const polliModel = D.settings.polliModel || 'flux';
@@ -4268,7 +4263,7 @@ async function appendAIAppContent(idx) {
   body.appendChild(loadingEl);
   body.scrollTop = body.scrollHeight;
 
-  const prompt = `你是${char.name}。为手机应用「${app.name}」（${app.desc}）追加更多内容。
+  const prompt = `你是${char.realName}。为手机应用「${app.name}」（${app.desc}）追加更多内容。
 
 【角色人设】
 ${char.persona || '无'}
@@ -4606,7 +4601,7 @@ async function startBrowserBatchGen() {
 
   const prompt = `你是一个手机网页渲染器。一次性生成以下 ${pages.length} 个网页的HTML内容。
 
-【角色】${char?.name || '用户'}
+【角色】${char?.realName || '用户'}
 【角色人设】${char?.persona || '无'}
 
 【需要生成的页面列表】
