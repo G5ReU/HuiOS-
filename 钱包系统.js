@@ -413,7 +413,7 @@ function renderTransferBubble(msg) {
         statusColor = '#AAAAAA';
     }
 
-    var h = '<div onclick="openTransferDetail(\'' + msg.id + '\')" style="cursor:pointer;background:' + bgColor + ';border:1.5px solid ' + borderColor + ';border-radius:14px;padding:14px 18px;min-width:180px;max-width:240px">';
+var h = '<div onclick="event.stopPropagation();openTransferDetail(\'' + msg.id + '\')" ontouchend="event.stopPropagation();openTransferDetail(\'' + msg.id + '\')" style="cursor:pointer;background:' + bgColor + ';border:1.5px solid ' + borderColor + ';border-radius:14px;padding:14px 18px;min-width:180px;max-width:240px">';
 
     if (topText) {
         h += '<div style="font-size:11px;color:' + (isPending ? '#999' : '#BBBBBB') + ';margin-bottom:4px">' + topText + '</div>';

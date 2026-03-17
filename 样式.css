@@ -788,11 +788,13 @@ body {
 .wallet-key:active {
     background: #f0f0f0;
 }
-#rechargeModal {
-    z-index: 2000;
+#rechargeModal,
+#transferDetailModal {
+    z-index: 2100;
 }
-#rechargeModal .modal-box {
-    z-index: 2001;
+#rechargeModal .modal-box,
+#transferDetailModal .modal-box {
+    z-index: 2101;
 }
 .msg-time-label {
     text-align: center;
