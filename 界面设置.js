@@ -1053,40 +1053,11 @@ function pushNotify(title, body, opts) {
     var chatroom = document.getElementById('chatroom');
     if (chatroom && chatroom.classList.contains('active')) return;
 
-    // 直接用 Notification API，不依赖 SW
     if (Notification.permission === 'granted') {
         new Notification(title, {
             body: body,
             icon: opts.icon || '',
             tag: opts.tag || 'huios-msg'
-        });
-        return;
-    }
-}
-    function doPost(reg) {
-        // 优先用 active，其次用 waiting，其次用 installing
-        var sw = reg.active || reg.waiting || reg.installing;
-        if (!sw) return;
-        sw.postMessage({
-            type: 'SHOW_NOTIFICATION',
-            title: title,
-            body: body,
-            icon: opts.icon || '',
-            tag: opts.tag || 'huios-msg',
-            data: { charId: opts.charId || '' }
-        });
-    }
-
-    if (_swReg) {
-        doPost(_swReg);
-        return;
-    }
-
-    // _swReg 还没赋值，用 ready 获取
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.ready.then(function(reg) {
-            _swReg = reg;
-            doPost(reg);
         });
     }
 }
