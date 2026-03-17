@@ -916,12 +916,23 @@ function onWbImport(e) {
 
 var _swReg = null; // Service Worker 注册实例
 
-// 注册 Service Worker
 function registerSW() {
     if (!('serviceWorker' in navigator)) return Promise.reject('不支持SW');
     return navigator.serviceWorker.register('/sw.js').then(function(reg) {
         _swReg = reg;
-        return reg;
+        // 如果已经有 active 直接返回
+        if (reg.active) return reg;
+        // 等待 SW 激活
+        return new Promise(function(resolve) {
+            var sw = reg.installing || reg.waiting;
+            if (!sw) { resolve(reg); return; }
+            sw.addEventListener('statechange', function() {
+                if (sw.state === 'activated') {
+                    _swReg = reg;
+                    resolve(reg);
+                }
+            });
+        });
     });
 }
 
@@ -1030,17 +1041,16 @@ function sendTestNotify() {
 // 用法：pushNotify('角色名', '消息内容', { icon: '...', charId: '...' })
 function pushNotify(title, body, opts) {
     opts = opts || {};
-
-    // 如果没开通知直接返回
     if (!D.settings.notifyOn) return;
 
-    // 如果页面在前台且聊天室是打开的，不推（已有应用内通知）
     var chatroom = document.getElementById('chatroom');
     if (chatroom && chatroom.classList.contains('active')) return;
 
-    // 用 SW 弹通知
-    if (_swReg) {
-        _swReg.active.postMessage({
+    function doPost(reg) {
+        // 优先用 active，其次用 waiting，其次用 installing
+        var sw = reg.active || reg.waiting || reg.installing;
+        if (!sw) return;
+        sw.postMessage({
             type: 'SHOW_NOTIFICATION',
             title: title,
             body: body,
@@ -1048,35 +1058,21 @@ function pushNotify(title, body, opts) {
             tag: opts.tag || 'huios-msg',
             data: { charId: opts.charId || '' }
         });
+    }
+
+    if (_swReg) {
+        doPost(_swReg);
         return;
     }
 
-    // SW 还没注册，尝试获取现有注册
+    // _swReg 还没赋值，用 ready 获取
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.ready.then(function(reg) {
             _swReg = reg;
-            if (reg.active) {
-                reg.active.postMessage({
-                    type: 'SHOW_NOTIFICATION',
-                    title: title,
-                    body: body,
-                    icon: opts.icon || '',
-                    tag: opts.tag || 'huios-msg',
-                    data: { charId: opts.charId || '' }
-                });
-            }
+            doPost(reg);
         });
     }
 }
-
-// 在 openPage('settings') 时调用刷新通知状态
-var _origOpenPage = openPage;
-openPage = function(name) {
-    _origOpenPage(name);
-    if (name === 'settings') {
-        setTimeout(checkNotifyEnv, 50);
-    }
-};
 
 // 启动
 init();
