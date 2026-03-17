@@ -4,7 +4,14 @@ var D = {
     presets: [],
     worldbooks: [],
         theme: { tz: 8, color: '#B8A9C9', colorDark: '#9D8BB8', homeWp: '', globalWp: '', avatarMode: 'none', showFuncTips: true },
-    settings: { stream: true, autoReply: true, delay: 3, segment: true, polliOn: false, polliKey: '', polliModel: 'flux', bgOn: false, bgInterval: 120, bgDmOn: true, bgMomentOn: true, imgSize: 512, imgQuality: 0.6 },
+settings: {
+    stream: true, autoReply: true, delay: 3, segment: true,
+    polliOn: false, polliKey: '', polliModel: 'flux',
+    bgOn: false, bgInterval: 120, bgDmOn: true, bgMomentOn: true,
+    imgSize: 512, imgQuality: 0.6,
+    debugConsoleOn: false,
+    notifyOn: false   // 新增这一行
+},
     accounts: [],
     currentAccId: null,
     accData: {}

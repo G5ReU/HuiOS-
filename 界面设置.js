@@ -80,6 +80,7 @@ function loadSettingsUI() {
     $('imgQualityVal').textContent = D.settings.imgQuality || 0.6;
     updateDelayVis();
     updatePolliVis();
+    checkNotifyEnv();
     updateBgVis();
     updateApi2Status();
 }
@@ -557,8 +558,6 @@ function viewFirstNotify() {
     }
 }
 
-function closeNotify() { $('notifyOverlay').classList.remove('show'); }
-function viewFirstNotify() { if (notifyQueue.length) clickNotify(0); }
 function clickNotify(i) {
     var n = notifyQueue[i]; if (!n) return;
     closeNotify();
@@ -912,6 +911,172 @@ function onWbImport(e) {
     reader.readAsText(file);
     e.target.value = '';
 }
+
+// ========== 推送通知系统 ==========
+
+var _swReg = null; // Service Worker 注册实例
+
+// 注册 Service Worker
+function registerSW() {
+    if (!('serviceWorker' in navigator)) return Promise.reject('不支持SW');
+    return navigator.serviceWorker.register('/sw.js').then(function(reg) {
+        _swReg = reg;
+        return reg;
+    });
+}
+
+// 检测通知环境并更新UI
+function checkNotifyEnv() {
+    var statusEl = document.getElementById('notifyStatusText');
+    var switchEl = document.getElementById('notifyOn');
+    var testItem = document.getElementById('testNotifyItem');
+    if (!statusEl || !switchEl) return;
+
+    // 检测是否在 standalone 模式（已添加到桌面）
+    var isStandalone = window.navigator.standalone === true ||
+        window.matchMedia('(display-mode: standalone)').matches;
+
+    if (!('serviceWorker' in navigator) || !('Notification' in window)) {
+        statusEl.textContent = '此浏览器不支持推送通知';
+        switchEl.disabled = true;
+        return;
+    }
+
+    if (!isStandalone) {
+        statusEl.textContent = '请先添加到主屏幕以启用通知';
+        switchEl.disabled = true;
+        switchEl.checked = false;
+        return;
+    }
+
+    var perm = Notification.permission;
+    if (perm === 'denied') {
+        statusEl.textContent = '通知权限已被拒绝，请在系统设置中开启';
+        switchEl.disabled = true;
+        switchEl.checked = false;
+        return;
+    }
+
+    // 环境正常
+    switchEl.disabled = false;
+    var saved = D.settings.notifyOn || false;
+    switchEl.checked = saved && perm === 'granted';
+
+    if (saved && perm === 'granted') {
+        statusEl.textContent = '通知已开启';
+        if (testItem) testItem.style.display = 'flex';
+    } else if (saved && perm === 'default') {
+        statusEl.textContent = '点击开关以授权通知';
+    } else {
+        statusEl.textContent = '已添加到主屏幕，可开启通知';
+        if (testItem) testItem.style.display = 'none';
+    }
+}
+
+// 开关被切换时的处理
+function onNotifyToggle(checked) {
+    var statusEl = document.getElementById('notifyStatusText');
+    var testItem = document.getElementById('testNotifyItem');
+
+    if (!checked) {
+        D.settings.notifyOn = false;
+        save();
+        if (statusEl) statusEl.textContent = '通知已关闭';
+        if (testItem) testItem.style.display = 'none';
+        return;
+    }
+
+    // 需要请求权限
+    if (Notification.permission === 'granted') {
+        // 已有权限，直接注册SW并开启
+        registerSW().then(function() {
+            D.settings.notifyOn = true;
+            save();
+            if (statusEl) statusEl.textContent = '通知已开启';
+            if (testItem) testItem.style.display = 'flex';
+        }).catch(function(err) {
+            toast('Service Worker 注册失败');
+            document.getElementById('notifyOn').checked = false;
+            console.error(err);
+        });
+    } else {
+        // 请求权限
+        Notification.requestPermission().then(function(perm) {
+            if (perm === 'granted') {
+                return registerSW().then(function() {
+                    D.settings.notifyOn = true;
+                    save();
+                    if (statusEl) statusEl.textContent = '通知已开启';
+                    if (testItem) testItem.style.display = 'flex';
+                });
+            } else {
+                D.settings.notifyOn = false;
+                save();
+                document.getElementById('notifyOn').checked = false;
+                if (statusEl) statusEl.textContent = '用户拒绝了通知权限';
+                if (testItem) testItem.style.display = 'none';
+                toast('未授权通知');
+            }
+        });
+    }
+}
+
+// 发送测试通知
+function sendTestNotify() {
+    pushNotify('HuIOS', '测试通知发送成功！', { tag: 'test' });
+}
+
+// 核心：通过 SW 推送通知（供其他模块调用）
+// 用法：pushNotify('角色名', '消息内容', { icon: '...', charId: '...' })
+function pushNotify(title, body, opts) {
+    opts = opts || {};
+
+    // 如果没开通知直接返回
+    if (!D.settings.notifyOn) return;
+
+    // 如果页面在前台且聊天室是打开的，不推（已有应用内通知）
+    var chatroom = document.getElementById('chatroom');
+    if (chatroom && chatroom.classList.contains('active')) return;
+
+    // 用 SW 弹通知
+    if (_swReg) {
+        _swReg.active.postMessage({
+            type: 'SHOW_NOTIFICATION',
+            title: title,
+            body: body,
+            icon: opts.icon || '',
+            tag: opts.tag || 'huios-msg',
+            data: { charId: opts.charId || '' }
+        });
+        return;
+    }
+
+    // SW 还没注册，尝试获取现有注册
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.ready.then(function(reg) {
+            _swReg = reg;
+            if (reg.active) {
+                reg.active.postMessage({
+                    type: 'SHOW_NOTIFICATION',
+                    title: title,
+                    body: body,
+                    icon: opts.icon || '',
+                    tag: opts.tag || 'huios-msg',
+                    data: { charId: opts.charId || '' }
+                });
+            }
+        });
+    }
+}
+
+// 在 openPage('settings') 时调用刷新通知状态
+var _origOpenPage = openPage;
+openPage = function(name) {
+    _origOpenPage(name);
+    if (name === 'settings') {
+        setTimeout(checkNotifyEnv, 50);
+    }
+};
 
 // 启动
 init();
