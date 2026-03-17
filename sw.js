@@ -7,29 +7,31 @@ self.addEventListener('activate', function(e) {
     e.waitUntil(self.clients.claim());
 });
 
-// 监听来自页面的消息，弹出通知
+// 接收页面发来的消息，弹出通知
 self.addEventListener('message', function(e) {
-    if (e.data && e.data.type === 'SHOW_NOTIFICATION') {
-        var title = e.data.title || 'HuIOS';
-        var options = {
-            body: e.data.body || '',
-            icon: e.data.icon || '',
-            badge: '',
-            tag: e.data.tag || 'huios-notify',
-            renotify: true,
-            data: e.data.data || {}
-        };
-        e.waitUntil(self.registration.showNotification(title, options));
-    }
+    if (!e.data || e.data.type !== 'SHOW_NOTIFICATION') return;
+    var title = e.data.title || '';
+    var options = {
+        body: e.data.body || '',
+        icon: e.data.icon || '',
+        tag: e.data.tag || 'huios-msg',
+        data: e.data.data || {}
+    };
+    e.waitUntil(self.registration.showNotification(title, options));
 });
 
-// 点击通知后聚焦到页面
+// 点击通知后跳转
 self.addEventListener('notificationclick', function(e) {
     e.notification.close();
+    var charId = e.notification.data && e.notification.data.charId;
     e.waitUntil(
         self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clients) {
             if (clients.length > 0) {
-                return clients[0].focus();
+                clients[0].focus();
+                if (charId) {
+                    clients[0].postMessage({ type: 'OPEN_CHAT', charId: charId });
+                }
+                return;
             }
             return self.clients.openWindow('/');
         })

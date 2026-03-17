@@ -629,6 +629,16 @@ function updateHomeDots() {
 // ========== 初始化 ==========
 async function init() {
     await load();
+// 在 await load(); 之后加
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.ready.then(function(reg) { _swReg = reg; });
+}
+navigator.serviceWorker.addEventListener('message', function(e) {
+    if (e.data && e.data.type === 'OPEN_CHAT' && e.data.charId) {
+        openPage('chat');
+        setTimeout(function() { openChat(e.data.charId); }, 300);
+    }
+});
     applyTheme();
     updateClock();
     setInterval(updateClock, 1000);
@@ -1050,10 +1060,24 @@ function pushNotify(title, body, opts) {
     opts = opts || {};
     if (!D.settings.notifyOn) return;
 
+    // 页面在前台且在聊天界面时不推送（用应用内通知代替）
     var chatroom = document.getElementById('chatroom');
-    if (chatroom && chatroom.classList.contains('active')) return;
+    if (document.visibilityState === 'visible' && chatroom && chatroom.classList.contains('active')) return;
 
-    if (Notification.permission === 'granted') {
+    if (Notification.permission !== 'granted') return;
+
+    // 优先用 SW 推送（可在后台显示）
+    if (_swReg && _swReg.active) {
+        _swReg.active.postMessage({
+            type: 'SHOW_NOTIFICATION',
+            title: title,
+            body: body,
+            icon: opts.icon || '',
+            tag: opts.tag || 'huios-msg',
+            data: { charId: opts.charId || '' }
+        });
+    } else {
+        // SW 未就绪时降级
         new Notification(title, {
             body: body,
             icon: opts.icon || '',
