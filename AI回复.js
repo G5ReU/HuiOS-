@@ -786,6 +786,13 @@ text = text.replace(/<TRANSFER_REJECT\s+id="[^"]+">[\s\S]*?<\/TRANSFER_REJECT>/g
                 type: 'email'
             }]);
         }
+        if (typeof pushNotify === 'function') {
+            pushNotify(charData.displayName || charData.realName, '📧 ' + subject, {
+                icon: charData.avatar || '',
+                charId: savedCharId,
+                tag: 'email-' + savedCharId
+            });
+        }
         if (typeof updateEmailBadge === 'function') updateEmailBadge();
         appendMsgToChat(savedCharId, { role: 'sys', type: 'sys', content: charName + ' 给你发了一封邮件：' + subject, time: Date.now() });
     });
@@ -1126,6 +1133,13 @@ if (callBgMatch) {
             if (!data.chats[char.id]) data.chats[char.id] = [];
 appendMsgToChat(char.id, { role: 'ai', content: content, time: Date.now() });
 notifications.push({ name: char.displayName, avatar: char.avatar, content: content, time: Date.now(), accId: D.currentAccId, charId: char.id });
+if (typeof pushNotify === 'function') {
+    pushNotify(char.displayName || char.realName, content.slice(0, 40), {
+        icon: char.avatar || '',
+        charId: char.id,
+        tag: 'chat-' + char.id
+    });
+}
         }
     });
     var momentMatches = text.match(/<MOMENT>([\s\S]*?)<\/MOMENT>/g) || [];
