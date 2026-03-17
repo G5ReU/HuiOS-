@@ -102,10 +102,14 @@ function selectAcc(id) {
 function updateAccBtns() {
     var show1 = !selectedAccId || isEditAccMode;
     var show2 = selectedAccId && !isEditAccMode;
-    document.querySelector('.btn-new-acc').style.display = show1 ? 'block' : 'none';
-    document.querySelector('.btn-edit-acc').style.display = show1 ? 'block' : 'none';
-    $('btnConfirmAcc').style.display = show2 ? 'block' : 'none';
-    $('btnCancelAcc').style.display = show2 ? 'block' : 'none';
+    var btnNew = document.querySelector('.btn-new-acc');
+    var btnEdit = document.querySelector('.btn-edit-acc');
+    var btnConfirm = $('btnConfirmAcc');
+    var btnCancel = $('btnCancelAcc');
+    if (btnNew) btnNew.style.display = show1 ? 'block' : 'none';
+    if (btnEdit) btnEdit.style.display = show1 ? 'block' : 'none';
+    if (btnConfirm) btnConfirm.style.display = show2 ? 'block' : 'none';
+    if (btnCancel) btnCancel.style.display = show2 ? 'block' : 'none';
 }
 
 function cancelSelectAcc() { selectedAccId = null; renderAccList(); updateAccBtns(); }
@@ -135,7 +139,8 @@ function delSelectedAcc() {
     D.accounts = D.accounts.filter(function(a) { return a.id !== selectedAccId; });
     delete D.accData[selectedAccId];
     if (D.currentAccId === selectedAccId) D.currentAccId = D.accounts.length ? D.accounts[0].id : null;
-    save(); selectedAccId = null; renderAccList();
+    save(); selectedAccId = null;
+    exitEditAccMode(); // 删完自动退出编辑模式，顺带 renderAccList
     toast('已删除');
 }
 
