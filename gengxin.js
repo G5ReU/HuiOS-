@@ -168,7 +168,7 @@ const UPDATE_CONFIG = {
     showNotice();
   }
 })();
-const PUSH_API_BASE = "https://quick-hare-82.l5nhuy.deno.net";
+const PUSH_API_BASE = "https://interesting-lamb-18.l5nhuy.deno.net";
 
 function urlBase64ToUint8Array(base64String) {
     const padding = "=".repeat((4 - base64String.length % 4) % 4);
@@ -272,14 +272,14 @@ async function onNotifyToggle(checked) {
             alert("开始发送订阅到后端");
 
             const resp = await fetch(`${PUSH_API_BASE}/subscribe`, {
-                method: "POST",
-                mode: "cors",
-                cache: "no-store",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify(subData)
-            });
+    method: "POST",
+    mode: "cors",
+    cache: "no-store",
+    headers: {
+        "Content-Type": "text/plain"
+    },
+    body: JSON.stringify(subData)
+});
 
             alert("后端返回状态：" + resp.status);
             const text = await resp.text();
