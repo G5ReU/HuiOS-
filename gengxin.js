@@ -235,43 +235,63 @@ async function onNotifyToggle(checked) {
             alert("通知权限结果：" + permission);
 
             if (permission !== "granted") {
-                alert("你没有允许通知权限");
                 if (toggleEl) toggleEl.checked = false;
                 if (statusEl) statusEl.textContent = "通知权限被拒绝";
                 return;
             }
 
-            let sub = await reg.pushManager.getSubscription();
-            alert("已有订阅：" + (sub ? "有" : "没有"));
+            let oldSub = await reg.pushManager.getSubscription();
+            alert("已有订阅：" + (oldSub ? "有" : "没有"));
 
-            if (!sub) {
-                alert("开始获取公钥");
-                const publicKey = await fetch(`${PUSH_API_BASE}/vapid-public-key`).then(r => r.text());
-                alert("公钥获取成功：" + publicKey.slice(0, 20) + "...");
-
-                alert("开始创建推送订阅");
-                sub = await reg.pushManager.subscribe({
-                    userVisibleOnly: true,
-                    applicationServerKey: urlBase64ToUint8Array(publicKey)
-                });
-                alert("订阅创建成功");
+            if (oldSub) {
+                alert("删除旧订阅中");
+                try {
+                    await oldSub.unsubscribe();
+                    alert("旧订阅已删除");
+                } catch (e) {
+                    alert("删除旧订阅失败，但继续尝试新建");
+                }
             }
 
+            alert("开始获取公钥");
+            const publicKey = await fetch(`${PUSH_API_BASE}/vapid-public-key`, {
+                method: "GET",
+                cache: "no-store"
+            }).then(r => r.text());
+
+            alert("公钥获取成功：" + publicKey.slice(0, 20) + "...");
+
+            alert("开始创建新订阅");
+            const sub = await reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: urlBase64ToUint8Array(publicKey)
+            });
+            alert("新订阅创建成功");
+
+            const subData = sub.toJSON ? sub.toJSON() : JSON.parse(JSON.stringify(sub));
             alert("开始发送订阅到后端");
+
             const resp = await fetch(`${PUSH_API_BASE}/subscribe`, {
                 method: "POST",
+                mode: "cors",
+                cache: "no-store",
                 headers: {
                     "Content-Type": "application/json"
                 },
-                body: JSON.stringify(sub)
+                body: JSON.stringify(subData)
             });
-            alert("后端返回状态：" + resp.status);
 
+            alert("后端返回状态：" + resp.status);
             const text = await resp.text();
             alert("后端返回内容：" + text);
 
+            if (!resp.ok) {
+                throw new Error(text || ("HTTP " + resp.status));
+            }
+
             if (statusEl) statusEl.textContent = "已开启推送";
             if (testEl) testEl.style.display = "";
+            if (toggleEl) toggleEl.checked = true;
             if (typeof toast === "function") toast("推送已开启");
         } else {
             const sub = await reg.pushManager.getSubscription();
@@ -285,7 +305,7 @@ async function onNotifyToggle(checked) {
     } catch (e) {
         alert("失败位置报错：" + (e && e.message ? e.message : String(e)));
         console.error("切换推送失败:", e);
-        if (toggleEl) toggleEl.checked = !checked;
+        if (toggleEl) toggleEl.checked = false;
         if (statusEl) statusEl.textContent = "开启失败";
     }
 }
