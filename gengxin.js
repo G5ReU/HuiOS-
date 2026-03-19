@@ -226,10 +226,14 @@ async function onNotifyToggle(checked) {
     }
 
     try {
+        alert("开始设置推送");
         const reg = await navigator.serviceWorker.ready;
+        alert("Service Worker 已就绪");
 
         if (checked) {
             const permission = await Notification.requestPermission();
+            alert("通知权限结果：" + permission);
+
             if (permission !== "granted") {
                 alert("你没有允许通知权限");
                 if (toggleEl) toggleEl.checked = false;
@@ -238,23 +242,33 @@ async function onNotifyToggle(checked) {
             }
 
             let sub = await reg.pushManager.getSubscription();
+            alert("已有订阅：" + (sub ? "有" : "没有"));
 
             if (!sub) {
+                alert("开始获取公钥");
                 const publicKey = await fetch(`${PUSH_API_BASE}/vapid-public-key`).then(r => r.text());
+                alert("公钥获取成功：" + publicKey.slice(0, 20) + "...");
 
+                alert("开始创建推送订阅");
                 sub = await reg.pushManager.subscribe({
                     userVisibleOnly: true,
                     applicationServerKey: urlBase64ToUint8Array(publicKey)
                 });
+                alert("订阅创建成功");
             }
 
-            await fetch(`${PUSH_API_BASE}/subscribe`, {
+            alert("开始发送订阅到后端");
+            const resp = await fetch(`${PUSH_API_BASE}/subscribe`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json"
                 },
                 body: JSON.stringify(sub)
             });
+            alert("后端返回状态：" + resp.status);
+
+            const text = await resp.text();
+            alert("后端返回内容：" + text);
 
             if (statusEl) statusEl.textContent = "已开启推送";
             if (testEl) testEl.style.display = "";
@@ -269,9 +283,10 @@ async function onNotifyToggle(checked) {
             if (typeof toast === "function") toast("推送已关闭");
         }
     } catch (e) {
+        alert("失败位置报错：" + (e && e.message ? e.message : String(e)));
         console.error("切换推送失败:", e);
-        alert("推送设置失败：" + e.message);
         if (toggleEl) toggleEl.checked = !checked;
+        if (statusEl) statusEl.textContent = "开启失败";
     }
 }
 
