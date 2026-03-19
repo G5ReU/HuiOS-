@@ -168,3 +168,150 @@ const UPDATE_CONFIG = {
     showNotice();
   }
 })();
+const PUSH_API_BASE = "https://quick-hare-82.l5nhuy.deno.net";
+
+function urlBase64ToUint8Array(base64String) {
+    const padding = "=".repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    const rawData = atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+}
+
+async function initNotifyStatus() {
+    const statusEl = document.getElementById("notifyStatusText");
+    const toggleEl = document.getElementById("notifyOn");
+    const testEl = document.getElementById("testNotifyItem");
+
+    if (!statusEl || !toggleEl) return;
+
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+        statusEl.textContent = "当前浏览器不支持推送";
+        toggleEl.checked = false;
+        if (testEl) testEl.style.display = "none";
+        return;
+    }
+
+    try {
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+
+        if (sub) {
+            statusEl.textContent = "已开启推送";
+            toggleEl.checked = true;
+            if (testEl) testEl.style.display = "";
+        } else {
+            statusEl.textContent = "未开启推送";
+            toggleEl.checked = false;
+            if (testEl) testEl.style.display = "none";
+        }
+    } catch (e) {
+        console.error("检查推送状态失败:", e);
+        statusEl.textContent = "推送状态检测失败";
+    }
+}
+
+async function onNotifyToggle(checked) {
+    const statusEl = document.getElementById("notifyStatusText");
+    const testEl = document.getElementById("testNotifyItem");
+    const toggleEl = document.getElementById("notifyOn");
+
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+        alert("当前浏览器不支持推送");
+        if (toggleEl) toggleEl.checked = false;
+        return;
+    }
+
+    try {
+        const reg = await navigator.serviceWorker.ready;
+
+        if (checked) {
+            const permission = await Notification.requestPermission();
+            if (permission !== "granted") {
+                alert("你没有允许通知权限");
+                if (toggleEl) toggleEl.checked = false;
+                if (statusEl) statusEl.textContent = "通知权限被拒绝";
+                return;
+            }
+
+            let sub = await reg.pushManager.getSubscription();
+
+            if (!sub) {
+                const publicKey = await fetch(`${PUSH_API_BASE}/vapid-public-key`).then(r => r.text());
+
+                sub = await reg.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: urlBase64ToUint8Array(publicKey)
+                });
+            }
+
+            await fetch(`${PUSH_API_BASE}/subscribe`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(sub)
+            });
+
+            if (statusEl) statusEl.textContent = "已开启推送";
+            if (testEl) testEl.style.display = "";
+            if (typeof toast === "function") toast("推送已开启");
+        } else {
+            const sub = await reg.pushManager.getSubscription();
+            if (sub) {
+                await sub.unsubscribe();
+            }
+            if (statusEl) statusEl.textContent = "未开启推送";
+            if (testEl) testEl.style.display = "none";
+            if (typeof toast === "function") toast("推送已关闭");
+        }
+    } catch (e) {
+        console.error("切换推送失败:", e);
+        alert("推送设置失败：" + e.message);
+        if (toggleEl) toggleEl.checked = !checked;
+    }
+}
+
+async function sendTestNotify() {
+    try {
+        const res = await fetch(`${PUSH_API_BASE}/send-push`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                title: "测试通知",
+                body: "HuIOS 推送测试成功"
+            })
+        });
+
+        const text = await res.text();
+        console.log(text);
+
+        if (res.ok) {
+            if (typeof toast === "function") toast("测试通知已发送");
+            else alert("测试通知已发送");
+        } else {
+            alert("发送失败：" + text);
+        }
+    } catch (e) {
+        console.error(e);
+        alert("发送失败：" + e.message);
+    }
+}
+
+window.addEventListener("load", async () => {
+    if ("serviceWorker" in navigator) {
+        try {
+            await navigator.serviceWorker.register("./sw.js");
+            console.log("SW 注册成功");
+        } catch (e) {
+            console.error("SW 注册失败:", e);
+        }
+    }
+
+    setTimeout(initNotifyStatus, 1000);
+});
