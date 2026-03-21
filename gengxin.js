@@ -168,7 +168,7 @@ const UPDATE_CONFIG = {
     showNotice();
   }
 })();
-const PUSH_API_BASE = "https://huios.g5reu418.workers.dev";
+const PUSH_API_BASE = "https://huios-push-production.up.railway.app";
 
 function urlBase64ToUint8Array(base64String) {
     const padding = "=".repeat((4 - base64String.length % 4) % 4);
@@ -308,15 +308,8 @@ const resp = await fetch(`${PUSH_API_BASE}/subscribe?sub=${encodeURIComponent(JS
 
 async function sendTestNotify() {
     try {
-        const res = await fetch(`${PUSH_API_BASE}/send-push`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                title: "测试通知",
-                body: "HuIOS 推送测试成功"
-            })
+        const res = await fetch(`${PUSH_API_BASE}/send-test`, {
+            method: "GET"
         });
 
         const text = await res.text();
@@ -333,16 +326,3 @@ async function sendTestNotify() {
         alert("发送失败：" + e.message);
     }
 }
-
-window.addEventListener("load", async () => {
-    if ("serviceWorker" in navigator) {
-        try {
-            await navigator.serviceWorker.register("./sw.js");
-            console.log("SW 注册成功");
-        } catch (e) {
-            console.error("SW 注册失败:", e);
-        }
-    }
-
-    setTimeout(initNotifyStatus, 1000);
-});
