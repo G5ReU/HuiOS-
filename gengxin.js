@@ -222,74 +222,152 @@ async function initNotifyStatus() {
 }
 
 async function onNotifyToggle(checked) {
-    const statusEl = document.getElementById("notifyStatusText");
-    const testEl = document.getElementById("testNotifyItem");
-    const toggleEl = document.getElementById("notifyOn");
+  const statusEl = document.getElementById("notifyStatusText");
+  const testEl = document.getElementById("testNotifyItem");
+  const toggleEl = document.getElementById("notifyOn");
 
-    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-        if (typeof toast === "function") toast("当前浏览器不支持推送");
-        if (toggleEl) toggleEl.checked = false;
-        return;
+  if (!checked) {
+    const sub = await navigator.serviceWorker.ready.then(r => r.pushManager.getSubscription());
+    if (sub) await sub.unsubscribe();
+    if (statusEl) statusEl.textContent = "未开启推送";
+    if (testEl) testEl.style.display = "none";
+    if (typeof toast === "function") toast("推送已关闭");
+    return;
+  }
+
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+    if (toggleEl) toggleEl.checked = false;
+    if (typeof toast === "function") toast("当前浏览器不支持推送");
+    return;
+  }
+
+  // 先请求系统权限
+  const permission = await Notification.requestPermission();
+  if (permission !== "granted") {
+    if (toggleEl) toggleEl.checked = false;
+    if (statusEl) statusEl.textContent = "通知权限被拒绝";
+    return;
+  }
+
+  // 弹检查弹窗
+  const steps = [
+    { label: "通知权限", status: "ok", detail: "已授权" },
+    { label: "获取公钥", status: "pending", detail: "" },
+    { label: "创建订阅", status: "pending", detail: "" },
+    { label: "上报后端", status: "pending", detail: "" },
+  ];
+
+  function renderSteps() {
+    return steps.map(s => {
+      const color = s.status === "ok" ? "#34c759" : s.status === "fail" ? "#ff3b30" : "#999";
+      const icon = s.status === "ok" ? "✓" : s.status === "fail" ? "✗" : "...";
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #f5f5f5;">
+        <span style="font-size:14px;color:#333;">${s.label}</span>
+        <span style="font-size:13px;color:${color};font-weight:600;">${icon} ${s.detail}</span>
+      </div>`;
+    }).join("");
+  }
+
+  const mask = document.createElement("div");
+  mask.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:99999;display:flex;align-items:center;justify-content:center;";
+  mask.innerHTML = `
+    <div style="background:#fff;border-radius:18px;width:min(88vw,360px);overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.25);">
+      <div style="padding:18px 20px 14px;border-bottom:1px solid #f0f0f0;text-align:center;">
+        <div style="font-size:17px;font-weight:700;color:#222;">正在开启推送</div>
+      </div>
+      <div id="checkSteps" style="padding:4px 20px 8px;"></div>
+      <div style="border-top:1px solid #f0f0f0;">
+        <button id="checkDoneBtn" style="width:100%;padding:14px;border:none;background:none;font-size:15px;font-weight:600;color:#9D8BB8;cursor:pointer;display:none;">确定</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(mask);
+
+  function update() {
+    document.getElementById("checkSteps").innerHTML = renderSteps();
+  }
+  update();
+
+  let success = true;
+
+  try {
+    // 获取公钥
+    const publicKey = await fetch(`${PUSH_API_BASE}/vapid-public-key`, {
+      method: "GET", cache: "no-store"
+    }).then(r => r.text());
+    steps[1].status = "ok";
+    steps[1].detail = "成功";
+    update();
+
+    // 创建订阅
+// 创建订阅
+await new Promise(resolve => setTimeout(resolve, 100));
+const reg = await navigator.serviceWorker.ready;
+let oldSub = await reg.pushManager.getSubscription();
+if (oldSub) await oldSub.unsubscribe();
+
+let sub;
+try {
+  sub = await reg.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: urlBase64ToUint8Array(publicKey)
+  });
+} catch (e) {
+  steps[2].status = "fail";
+  steps[2].detail = e.message || String(e);
+  update();
+  success = false;
+  document.getElementById("checkDoneBtn").style.display = "";
+  document.getElementById("checkDoneBtn").onclick = () => mask.remove();
+  if (toggleEl) toggleEl.checked = false;
+  if (statusEl) statusEl.textContent = "开启失败";
+  return;
+}
+steps[2].status = "ok";
+steps[2].detail = "成功";
+update();
+
+    // 上报后端
+    const subData = sub.toJSON ? sub.toJSON() : JSON.parse(JSON.stringify(sub));
+    const userId = getDeviceId();
+    const resp = await fetch(`${PUSH_API_BASE}/subscribe`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      mode: "cors",
+      body: JSON.stringify({ sub: subData, userId })
+    });
+    const result = await resp.json();
+    if (resp.ok && result.ok) {
+      steps[3].status = "ok";
+      steps[3].detail = "成功，共 " + result.total + " 台设备";
+    } else {
+      throw new Error(JSON.stringify(result));
     }
+    update();
 
-    try {
-        const reg = await navigator.serviceWorker.ready;
-
-        if (checked) {
-            const permission = await Notification.requestPermission();
-            if (permission !== "granted") {
-                if (toggleEl) toggleEl.checked = false;
-                if (statusEl) statusEl.textContent = "通知权限被拒绝";
-                return;
-            }
-
-            let oldSub = await reg.pushManager.getSubscription();
-            if (oldSub) {
-                try { await oldSub.unsubscribe(); } catch (e) {}
-            }
-
-            const publicKey = await fetch(`${PUSH_API_BASE}/vapid-public-key`, {
-                method: "GET",
-                cache: "no-store"
-            }).then(r => r.text());
-
-            const sub = await reg.pushManager.subscribe({
-                userVisibleOnly: true,
-                applicationServerKey: urlBase64ToUint8Array(publicKey)
-            });
-
-            const subData = sub.toJSON ? sub.toJSON() : JSON.parse(JSON.stringify(sub));
-
-const userId = getDeviceId();
-const resp = await fetch(`${PUSH_API_BASE}/subscribe`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    mode: "cors",
-    body: JSON.stringify({ sub: subData, userId })
-});
-
-            if (!resp.ok) {
-                const text = await resp.text();
-                throw new Error(text || ("HTTP " + resp.status));
-            }
-
-            if (statusEl) statusEl.textContent = "已开启推送";
-            if (testEl) testEl.style.display = "";
-            if (toggleEl) toggleEl.checked = true;
-            if (typeof toast === "function") toast("推送已开启");
-        } else {
-            const sub = await reg.pushManager.getSubscription();
-            if (sub) await sub.unsubscribe();
-            if (statusEl) statusEl.textContent = "未开启推送";
-            if (testEl) testEl.style.display = "none";
-            if (typeof toast === "function") toast("推送已关闭");
-        }
-    } catch (e) {
-        console.error("切换推送失败:", e);
-        if (toggleEl) toggleEl.checked = false;
-        if (statusEl) statusEl.textContent = "开启失败";
-        if (typeof toast === "function") toast("推送开启失败");
+  } catch (e) {
+    success = false;
+    for (const s of steps) {
+      if (s.status === "pending") {
+        s.status = "fail";
+        s.detail = String(e).slice(0, 30);
+        break;
+      }
     }
+    update();
+    if (toggleEl) toggleEl.checked = false;
+    if (statusEl) statusEl.textContent = "开启失败";
+  }
+
+  document.getElementById("checkDoneBtn").style.display = "";
+  document.getElementById("checkDoneBtn").onclick = () => {
+    mask.remove();
+    if (success) {
+      if (statusEl) statusEl.textContent = "已开启推送";
+      if (testEl) testEl.style.display = "";
+      if (toggleEl) toggleEl.checked = true;
+    }
+  };
 }
 
 async function sendTestNotify() {
