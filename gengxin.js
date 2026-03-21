@@ -367,7 +367,6 @@ async function showPushDebug() {
     // 5. 服务器订阅情况
     try {
         const data = await fetch(`${PUSH_API_BASE}/subscriptions?userId=${encodeURIComponent(userId)}`, { cache: 'no-store' }).then(r => r.json());
-        lines.push('服务器总订阅数: ' + data.total);
         lines.push('我的订阅数: ' + data.filtered);
         if (data.subs && data.subs.length) {
             data.subs.forEach(function(s, i) {
