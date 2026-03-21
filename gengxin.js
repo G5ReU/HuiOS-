@@ -3,17 +3,16 @@
 // ========================================
 // 配置区：每次更新只需修改这里
 const UPDATE_CONFIG = {
-  version: 'v1.0.2',
+  version: 'v1.0.3',
   content: `
-🎉 欢迎使用 HuiPhone！
+🎉 欢迎使用 HuIOS！
+
+【更新】
+· 真正的后台消息推送
 
 【修复】
 · 修复弹窗层级低问题
-· 修复长按编辑框不显示问题
-· 修复报错
-
-【优化】
-· 终于有全屏啦啦啦啦！！
+· 修复iOS长按编辑框不显示问题
   `.trim()
 };
 
@@ -220,20 +219,16 @@ async function onNotifyToggle(checked) {
     const toggleEl = document.getElementById("notifyOn");
 
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-        alert("当前浏览器不支持推送");
+        if (typeof toast === "function") toast("当前浏览器不支持推送");
         if (toggleEl) toggleEl.checked = false;
         return;
     }
 
     try {
-        alert("开始设置推送");
         const reg = await navigator.serviceWorker.ready;
-        alert("Service Worker 已就绪");
 
         if (checked) {
             const permission = await Notification.requestPermission();
-            alert("通知权限结果：" + permission);
-
             if (permission !== "granted") {
                 if (toggleEl) toggleEl.checked = false;
                 if (statusEl) statusEl.textContent = "通知权限被拒绝";
@@ -241,47 +236,30 @@ async function onNotifyToggle(checked) {
             }
 
             let oldSub = await reg.pushManager.getSubscription();
-            alert("已有订阅：" + (oldSub ? "有" : "没有"));
-
             if (oldSub) {
-                alert("删除旧订阅中");
-                try {
-                    await oldSub.unsubscribe();
-                    alert("旧订阅已删除");
-                } catch (e) {
-                    alert("删除旧订阅失败，但继续尝试新建");
-                }
+                try { await oldSub.unsubscribe(); } catch (e) {}
             }
 
-            alert("开始获取公钥");
             const publicKey = await fetch(`${PUSH_API_BASE}/vapid-public-key`, {
                 method: "GET",
                 cache: "no-store"
             }).then(r => r.text());
 
-            alert("公钥获取成功：" + publicKey.slice(0, 20) + "...");
-
-            alert("开始创建新订阅");
             const sub = await reg.pushManager.subscribe({
                 userVisibleOnly: true,
                 applicationServerKey: urlBase64ToUint8Array(publicKey)
             });
-            alert("新订阅创建成功");
 
             const subData = sub.toJSON ? sub.toJSON() : JSON.parse(JSON.stringify(sub));
-            alert("开始发送订阅到后端");
 
-const resp = await fetch(`${PUSH_API_BASE}/subscribe?sub=${encodeURIComponent(JSON.stringify(subData))}`, {
-    method: "GET",
-    mode: "cors",
-    cache: "no-store"
-});
-
-            alert("后端返回状态：" + resp.status);
-            const text = await resp.text();
-            alert("后端返回内容：" + text);
+            const resp = await fetch(`${PUSH_API_BASE}/subscribe?sub=${encodeURIComponent(JSON.stringify(subData))}`, {
+                method: "GET",
+                mode: "cors",
+                cache: "no-store"
+            });
 
             if (!resp.ok) {
+                const text = await resp.text();
                 throw new Error(text || ("HTTP " + resp.status));
             }
 
@@ -291,18 +269,16 @@ const resp = await fetch(`${PUSH_API_BASE}/subscribe?sub=${encodeURIComponent(JS
             if (typeof toast === "function") toast("推送已开启");
         } else {
             const sub = await reg.pushManager.getSubscription();
-            if (sub) {
-                await sub.unsubscribe();
-            }
+            if (sub) await sub.unsubscribe();
             if (statusEl) statusEl.textContent = "未开启推送";
             if (testEl) testEl.style.display = "none";
             if (typeof toast === "function") toast("推送已关闭");
         }
     } catch (e) {
-        alert("失败位置报错：" + (e && e.message ? e.message : String(e)));
         console.error("切换推送失败:", e);
         if (toggleEl) toggleEl.checked = false;
         if (statusEl) statusEl.textContent = "开启失败";
+        if (typeof toast === "function") toast("推送开启失败");
     }
 }
 
@@ -326,3 +302,36 @@ async function sendTestNotify() {
         alert("发送失败：" + e.message);
     }
 }
+
+async function pushNotify(title, body, options) {
+    try {
+        var url = "https://huios.pages.dev";
+        var icon = "";
+        var tag = "huios-push";
+        if (typeof options === "string") {
+            url = options;
+        } else if (options && typeof options === "object") {
+            url = options.url || url;
+            icon = options.icon || "";
+            tag = options.tag || tag;
+        }
+        await fetch(PUSH_API_BASE + "/send-push", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ title, body, url, icon, tag })
+        });
+    } catch (e) {
+        console.error("推送失败:", e);
+    }
+}
+window.addEventListener("load", async () => {
+    if ("serviceWorker" in navigator) {
+        try {
+            await navigator.serviceWorker.register("./sw.js");
+            console.log("SW 注册成功");
+        } catch (e) {
+            console.error("SW 注册失败:", e);
+        }
+    }
+    setTimeout(initNotifyStatus, 1000);
+});
