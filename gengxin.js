@@ -429,8 +429,20 @@ function showWarningAlert(message) {
   `;
   document.body.appendChild(mask);
 }
+async function reportUser() {
+  try {
+    const userId = getDeviceId();
+    await fetch(`${PUSH_API_BASE}/report`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId })
+    });
+  } catch (e) {}
+}
+
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', checkWarnings);
+  document.addEventListener('DOMContentLoaded', () => { checkWarnings(); reportUser(); });
 } else {
   checkWarnings();
+  reportUser();
 }
