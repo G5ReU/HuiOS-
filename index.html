@@ -969,12 +969,19 @@
         </label>
     </div>
     <div class="s-item" id="testNotifyItem" style="display:none">
-        <div class="s-left">
-            <div class="s-icon" style="background:var(--accent-mint)">🧪</div>
-            <span>发送测试通知</span>
-        </div>
-        <button onclick="sendTestNotify()" style="padding:6px 14px;border:none;border-radius:8px;background:var(--primary-light);color:var(--primary-dark);font-size:12px;cursor:pointer">发送</button>
+    <div class="s-left">
+        <div class="s-icon" style="background:var(--accent-mint)">🧪</div>
+        <span>发送测试通知</span>
     </div>
+    <button onclick="sendTestNotify()" style="padding:6px 14px;border:none;border-radius:8px;background:var(--primary-light);color:var(--primary-dark);font-size:12px;cursor:pointer">发送</button>
+</div>
+<div class="s-item" onclick="showPushDebug()">
+    <div class="s-left">
+        <div class="s-icon" style="background:#888">🔍</div>
+        <span>推送调试信息</span>
+    </div>
+    <span class="s-value">查看 ›</span>
+</div>
 </div>
             <div class="s-title">数据管理</div>
             <div class="s-section">

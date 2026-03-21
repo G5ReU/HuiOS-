@@ -252,11 +252,13 @@ async function onNotifyToggle(checked) {
 
             const subData = sub.toJSON ? sub.toJSON() : JSON.parse(JSON.stringify(sub));
 
-            const resp = await fetch(`${PUSH_API_BASE}/subscribe?sub=${encodeURIComponent(JSON.stringify(subData))}`, {
-                method: "GET",
-                mode: "cors",
-                cache: "no-store"
-            });
+const userId = (typeof D !== 'undefined' && D.currentAccId) ? D.currentAccId : 'default';
+const resp = await fetch(`${PUSH_API_BASE}/subscribe`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    mode: "cors",
+    body: JSON.stringify({ sub: subData, userId })
+});
 
             if (!resp.ok) {
                 const text = await resp.text();
@@ -284,21 +286,17 @@ async function onNotifyToggle(checked) {
 
 async function sendTestNotify() {
     try {
-        const res = await fetch(`${PUSH_API_BASE}/send-test`, {
+        const userId = (typeof D !== 'undefined' && D.currentAccId) ? D.currentAccId : 'default';
+        const res = await fetch(`${PUSH_API_BASE}/send-test?userId=${encodeURIComponent(userId)}`, {
             method: "GET"
         });
-
         const text = await res.text();
-        console.log(text);
-
         if (res.ok) {
             if (typeof toast === "function") toast("测试通知已发送");
-            else alert("测试通知已发送");
         } else {
             alert("发送失败：" + text);
         }
     } catch (e) {
-        console.error(e);
         alert("发送失败：" + e.message);
     }
 }
@@ -308,30 +306,90 @@ async function pushNotify(title, body, options) {
         var url = "https://huios.pages.dev";
         var icon = "";
         var tag = "huios-push";
-        if (typeof options === "string") {
-            url = options;
-        } else if (options && typeof options === "object") {
+        if (typeof options === "object" && options) {
             url = options.url || url;
             icon = options.icon || "";
             tag = options.tag || tag;
         }
+        const userId = (typeof D !== 'undefined' && D.currentAccId) ? D.currentAccId : 'default';
         await fetch(PUSH_API_BASE + "/send-push", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ title, body, url, icon, tag })
+            body: JSON.stringify({ title, body, url, icon, tag, userId })
         });
     } catch (e) {
         console.error("推送失败:", e);
     }
 }
-window.addEventListener("load", async () => {
-    if ("serviceWorker" in navigator) {
-        try {
-            await navigator.serviceWorker.register("./sw.js");
-            console.log("SW 注册成功");
-        } catch (e) {
-            console.error("SW 注册失败:", e);
+async function showPushDebug() {
+    const lines = [];
+
+    // 1. 浏览器支持情况
+    lines.push('=== 环境 ===');
+    lines.push('ServiceWorker: ' + ('serviceWorker' in navigator ? '支持' : '不支持'));
+    lines.push('PushManager: ' + ('PushManager' in window ? '支持' : '不支持'));
+    lines.push('Notification权限: ' + (Notification.permission));
+
+    // 2. userId
+    const userId = (typeof D !== 'undefined' && D.currentAccId) ? D.currentAccId : 'default';
+    lines.push('');
+    lines.push('=== 用户 ===');
+    lines.push('userId: ' + userId);
+
+    // 3. SW 状态
+    lines.push('');
+    lines.push('=== Service Worker ===');
+    try {
+        const reg = await navigator.serviceWorker.ready;
+        lines.push('SW状态: 已就绪');
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) {
+            lines.push('订阅状态: 已订阅');
+            lines.push('endpoint: ' + sub.endpoint.slice(0, 50) + '...');
+        } else {
+            lines.push('订阅状态: 未订阅');
         }
+    } catch (e) {
+        lines.push('SW状态: 异常 - ' + e.message);
     }
-    setTimeout(initNotifyStatus, 1000);
-});
+
+    // 4. 公钥获取
+    lines.push('');
+    lines.push('=== 服务器 ===');
+    try {
+        const key = await fetch(`${PUSH_API_BASE}/vapid-public-key`, { cache: 'no-store' }).then(r => r.text());
+        lines.push('公钥获取: 成功');
+        lines.push('公钥: ' + key.slice(0, 20) + '...');
+    } catch (e) {
+        lines.push('公钥获取: 失败 - ' + e.message);
+    }
+
+    // 5. 服务器订阅情况
+    try {
+        const data = await fetch(`${PUSH_API_BASE}/subscriptions?userId=${encodeURIComponent(userId)}`, { cache: 'no-store' }).then(r => r.json());
+        lines.push('服务器总订阅数: ' + data.total);
+        lines.push('我的订阅数: ' + data.filtered);
+        if (data.subs && data.subs.length) {
+            data.subs.forEach(function(s, i) {
+                lines.push('  设备' + (i+1) + ': ' + s.endpoint + ' 密钥:' + (s.hasKeys ? '有' : '无'));
+            });
+        }
+    } catch (e) {
+        lines.push('服务器订阅查询: 失败 - ' + e.message);
+    }
+
+    // 弹窗
+    const mask = document.createElement('div');
+    mask.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:99999;display:flex;align-items:center;justify-content:center;';
+    mask.innerHTML = `
+        <div style="background:#fff;border-radius:16px;width:min(90vw,400px);max-height:75vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+            <div style="padding:16px 20px;border-bottom:1px solid #f0f0f0;font-weight:700;font-size:16px;">推送调试信息</div>
+            <div style="flex:1;overflow-y:auto;padding:16px 20px;font-size:12px;font-family:monospace;white-space:pre-wrap;line-height:1.8;color:#333;">${lines.join('\n')}</div>
+            <div style="border-top:1px solid #f0f0f0;">
+                <button onclick="this.closest('div').parentNode.parentNode.remove()" style="width:100%;padding:14px;border:none;background:none;font-size:15px;font-weight:600;color:#9D8BB8;cursor:pointer;">确定</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(mask);
+    mask.addEventListener('click', function(e) { if (e.target === mask) mask.remove(); });
+}
