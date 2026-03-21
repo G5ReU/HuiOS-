@@ -1,3 +1,11 @@
+function getDeviceId() {
+  let id = localStorage.getItem('huios_device_id');
+  if (!id) {
+    id = 'dev_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    localStorage.setItem('huios_device_id', id);
+  }
+  return id;
+}
 // ========================================
 // 更新公告.js
 // ========================================
@@ -252,7 +260,7 @@ async function onNotifyToggle(checked) {
 
             const subData = sub.toJSON ? sub.toJSON() : JSON.parse(JSON.stringify(sub));
 
-const userId = (typeof D !== 'undefined' && D.currentAccId) ? D.currentAccId : 'default';
+const userId = getDeviceId();
 const resp = await fetch(`${PUSH_API_BASE}/subscribe`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -286,7 +294,7 @@ const resp = await fetch(`${PUSH_API_BASE}/subscribe`, {
 
 async function sendTestNotify() {
     try {
-        const userId = (typeof D !== 'undefined' && D.currentAccId) ? D.currentAccId : 'default';
+        const userId = getDeviceId();
         const res = await fetch(`${PUSH_API_BASE}/send-test?userId=${encodeURIComponent(userId)}`, {
             method: "GET"
         });
@@ -311,7 +319,7 @@ async function pushNotify(title, body, options) {
             icon = options.icon || "";
             tag = options.tag || tag;
         }
-        const userId = (typeof D !== 'undefined' && D.currentAccId) ? D.currentAccId : 'default';
+const userId = getDeviceId();
         await fetch(PUSH_API_BASE + "/send-push", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -331,7 +339,7 @@ async function showPushDebug() {
     lines.push('Notification权限: ' + (Notification.permission));
 
     // 2. userId
-    const userId = (typeof D !== 'undefined' && D.currentAccId) ? D.currentAccId : 'default';
+const userId = getDeviceId();
     lines.push('');
     lines.push('=== 用户 ===');
     lines.push('userId: ' + userId);
@@ -391,4 +399,38 @@ async function showPushDebug() {
     `;
     document.body.appendChild(mask);
     mask.addEventListener('click', function(e) { if (e.target === mask) mask.remove(); });
+}
+
+async function checkWarnings() {
+  try {
+    const userId = getDeviceId();
+    const res = await fetch(`${PUSH_API_BASE}/warnings?userId=${encodeURIComponent(userId)}`);
+    const data = await res.json();
+    if (!data.warnings || !data.warnings.length) return;
+    for (const w of data.warnings) {
+      showWarningAlert(w.message);
+    }
+  } catch (e) {}
+}
+
+function showWarningAlert(message) {
+  const mask = document.createElement('div');
+  mask.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:99999;display:flex;align-items:center;justify-content:center;';
+  mask.innerHTML = `
+    <div style="background:#fff;border-radius:18px;width:min(88vw,360px);overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.25);">
+      <div style="padding:20px 20px 14px;border-bottom:1px solid #f0f0f0;text-align:center;">
+        <div style="font-size:17px;font-weight:700;color:#ff3b30;">管理员通知</div>
+      </div>
+      <div style="padding:16px 20px;font-size:14px;color:#444;line-height:1.8;">${message}</div>
+      <div style="border-top:1px solid #f0f0f0;">
+        <button onclick="this.closest('div').parentNode.parentNode.remove()" style="width:100%;padding:14px;border:none;background:none;font-size:15px;font-weight:600;color:#9D8BB8;cursor:pointer;">我知道了</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(mask);
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', checkWarnings);
+} else {
+  checkWarnings();
 }
