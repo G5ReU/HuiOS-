@@ -168,7 +168,7 @@ const UPDATE_CONFIG = {
     showNotice();
   }
 })();
-const PUSH_API_BASE = "https://huios.g5reu418.workers.dev/";
+const PUSH_API_BASE = "https://huios.g5reu418.workers.dev";
 
 function urlBase64ToUint8Array(base64String) {
     const padding = "=".repeat((4 - base64String.length % 4) % 4);
