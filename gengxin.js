@@ -168,7 +168,7 @@ const UPDATE_CONFIG = {
     showNotice();
   }
 })();
-const PUSH_API_BASE = "https://interesting-lamb-18.l5nhuy.deno.net";
+const PUSH_API_BASE = "https://huios.g5reu418.workers.dev/";
 
 function urlBase64ToUint8Array(base64String) {
     const padding = "=".repeat((4 - base64String.length % 4) % 4);
@@ -271,14 +271,10 @@ async function onNotifyToggle(checked) {
             const subData = sub.toJSON ? sub.toJSON() : JSON.parse(JSON.stringify(sub));
             alert("开始发送订阅到后端");
 
-            const resp = await fetch(`${PUSH_API_BASE}/subscribe`, {
-    method: "POST",
+const resp = await fetch(`${PUSH_API_BASE}/subscribe?sub=${encodeURIComponent(JSON.stringify(subData))}`, {
+    method: "GET",
     mode: "cors",
-    cache: "no-store",
-    headers: {
-        "Content-Type": "text/plain"
-    },
-    body: JSON.stringify(subData)
+    cache: "no-store"
 });
 
             alert("后端返回状态：" + resp.status);
