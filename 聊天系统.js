@@ -1,3 +1,51 @@
+
+// ===== 风控接入（最小版）=====
+const RISK_API = "https://huios-push-production.up.railway.app";
+
+function getRiskUserId() {
+  var k = "huios_risk_uid";
+  var id = localStorage.getItem(k);
+  if (!id) {
+    id = "u_" + Math.random().toString(36).slice(2, 10) + "_" + Date.now().toString(36);
+    localStorage.setItem(k, id);
+  }
+  return id;
+}
+
+async function riskStatusCheck() {
+  try {
+    var uid = getRiskUserId();
+    var res = await fetch(RISK_API + "/client/status?userId=" + encodeURIComponent(uid));
+    var d = await res.json();
+    window.__RISK_BANNED__ = !!(d && d.banned);
+    window.__RISK_BAN_MSG__ = (d && d.message) || "账号已被封禁";
+    return !window.__RISK_BANNED__;
+  } catch (e) {
+    // 网络异常时不拦截，避免误杀
+    return true;
+  }
+}
+
+function riskLog(role, text) {
+  try {
+    var uid = getRiskUserId();
+    var t = String(text || "").trim();
+    if (!t) return;
+    fetch(RISK_API + "/client/ai-log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId: uid,
+        role: role === "assistant" ? "assistant" : "user",
+        text: t.slice(0, 500)
+      })
+    }).catch(function(){});
+  } catch (e) {}
+}
+
+// 页面启动先登记一次用户 + 拿封禁状态
+setTimeout(function() { riskStatusCheck(); }, 0);
+
 function switchNav(idx) {
     document.querySelectorAll('.nav-item').forEach(function(el, i) { el.classList.toggle('active', i === idx); });
     document.querySelectorAll('.nav-pane').forEach(function(el, i) { el.classList.toggle('active', i === idx); });
@@ -627,6 +675,13 @@ function appendMsgToChat(charId, msg) {
     
     data.chats[charId].push(msg);
     save();
+    // 新增：自动上报最近消息（AI/用户）
+    if (msg && (msg.role === 'ai' || msg.role === 'user') && msg.type !== 'sys' && !msg.recalled) {
+        var contentForLog = msg.content || msg.imageDesc || msg.stickerDesc || (msg.type === 'voice' ? '[语音]' : '');
+        if (contentForLog) {
+            riskLog(msg.role === 'ai' ? 'assistant' : 'user', contentForLog);
+        }
+    }
     
     var idx = data.chats[charId].length - 1;
     
@@ -727,6 +782,12 @@ function appendMsg(msg) {
     
     data.chats[charId].push(msg);
     save();
+if (msg && (msg.role === 'ai' || msg.role === 'user') && msg.type !== 'sys' && !msg.recalled) {
+    var contentForLog = msg.content || msg.imageDesc || msg.stickerDesc || (msg.type === 'voice' ? '[语音]' : '');
+    if (contentForLog) {
+        riskLog(msg.role === 'ai' ? 'assistant' : 'user', contentForLog);
+    }
+}
     
     var idx = data.chats[charId].length - 1;
     
@@ -1065,37 +1126,47 @@ function deleteMsg() {
     data.chats[charId].splice(selectedMsgIdx, 1);
     save(); renderMsgs(false); hideMsgMenu(); toast('已删除');
 }
-function sendMsg() {
+async function sendMsg() {
     var input = $('msgInput');
     var text = input.value.trim();
     if (!text || !curChar) return;
     if (!D.api.key) return toast('请先配置API');
-    
+
+    var ok = await riskStatusCheck();
+    if (!ok) {
+        toast(window.__RISK_BAN_MSG__ || '账号已被封禁');
+        return;
+    }
+
     var msg = { role: 'user', content: text, time: Date.now() };
-        if (quotedMsg) {
-    msg.quoteTime = quotedMsg.time;
-    msg.quoteContent = quotedMsg.type === 'image' ? '[图片]' : 
-                       quotedMsg.type === 'voice' ? '[语音]' : 
-                       quotedMsg.type === 'sticker' ? '[表情包: ' + (quotedMsg.stickerDesc || '表情') + ']' : 
-                       (quotedMsg.content || '').slice(0, 50);
-}
-    
+    if (quotedMsg) {
+        msg.quoteTime = quotedMsg.time;
+        msg.quoteContent = quotedMsg.type === 'image' ? '[图片]' :
+                           quotedMsg.type === 'voice' ? '[语音]' :
+                           quotedMsg.type === 'sticker' ? '[表情包: ' + (quotedMsg.stickerDesc || '表情') + ']' :
+                           (quotedMsg.content || '').slice(0, 50);
+    }
+
     appendMsg(msg);
+    riskLog("user", text); // 关键：用户消息上报
+
     input.value = '';
     autoGrow(input);
     cancelQuote();
     closeFunc();
-    
+
     lastInteract[curChar.id] = Date.now();
-    
+
     if (timer) clearTimeout(timer);
     if (delayTimer) clearInterval(delayTimer);
     removeDelay();
-    
+
     if (D.settings.autoReply) {
         var delay = D.settings.delay * 1000;
-        if (delay > 0) { showDelay(D.settings.delay); timer = setTimeout(function() { removeDelay(); doResponse(); }, delay); }
-        else doResponse();
+        if (delay > 0) {
+            showDelay(D.settings.delay);
+            timer = setTimeout(function() { removeDelay(); doResponse(); }, delay);
+        } else doResponse();
     } else updateWaitBtn();
 }
 
@@ -1330,29 +1401,37 @@ function genAiImage() {
     img.src = url;
 }
 
-function onImageSelect(e) {
-    var f = e.target.files[0]; if (!f) return;
+async function onImageSelect(e) {
+    var f = e.target.files[0];
+    if (!f) return;
     e.target.value = '';
+
+    // 新增：封禁检查（图片发送前）
+    var ok = await riskStatusCheck();
+    if (!ok) {
+        toast(window.__RISK_BAN_MSG__ || '账号已被封禁');
+        return;
+    }
+
     toast('处理中...');
-    
+
     var reader = new FileReader();
     reader.onload = function(ev) {
         compressImg(ev.target.result, function(compressed) {
-                        if ($('publishPage').classList.contains('active')) {
-                // ✅ 朋友圈：先添加base64，然后后台识图生成描述
+            if ($('publishPage').classList.contains('active')) {
+                // 朋友圈：先添加base64，然后后台识图生成描述
                 pubImages.push({ url: compressed, desc: '' });
-                renderPubImages(); checkPublish();
+                renderPubImages();
+                checkPublish();
                 toast('图片已添加，正在识别...');
-                
-                // 后台识图
+
                 recognizeImage(compressed, function(desc) {
-                    // 找到最后一张图片并更新描述
                     if (pubImages.length > 0) {
                         pubImages[pubImages.length - 1].desc = desc;
                         renderPubImages();
                     }
                 });
-                       } else if (curChar) {
+            } else if (curChar) {
                 var msgIdx = appendMsg({ role: 'user', type: 'image', imageUrl: compressed, imageDesc: '', time: Date.now() });
                 toast('正在识别图片...');
                 recognizeImage(compressed, function(desc) {
@@ -1400,9 +1479,13 @@ function triggerAutoReply() {
 
 function openVoice() { closeFunc(); $('voiceText').value = ''; openModal('voiceModal'); }
 
-function sendVoice() {
+async function sendVoice() {
     var text = $('voiceText').value.trim();
     if (!text) return toast('请输入内容');
+
+    var ok = await riskStatusCheck();
+    if (!ok) return toast(window.__RISK_BAN_MSG__ || '账号已被封禁');
+
     closeModal('voiceModal');
     appendMsg({ role: 'user', type: 'voice', content: text, duration: Math.ceil(text.length / 5), time: Date.now() });
     triggerAutoReply();
