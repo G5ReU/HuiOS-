@@ -3,10 +3,11 @@
 const RISK_API = "https://huios-push-production.up.railway.app";
 
 function getRiskUserId() {
-  var k = "huios_risk_uid";
+  if (typeof D !== "undefined" && D.currentAccId) return String(D.currentAccId);
+  var k = "huios_uid"; // 统一
   var id = localStorage.getItem(k);
   if (!id) {
-    id = "u_" + Math.random().toString(36).slice(2, 10) + "_" + Date.now().toString(36);
+    id = "u_" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
     localStorage.setItem(k, id);
   }
   return id;
@@ -15,13 +16,16 @@ function getRiskUserId() {
 async function riskStatusCheck() {
   try {
     var uid = getRiskUserId();
-    var res = await fetch(RISK_API + "/client/status?userId=" + encodeURIComponent(uid));
+    var apiUrl = (window.D && D.api && D.api.url) ? D.api.url : "";
+    var res = await fetch(
+      RISK_API + "/client/status?userId=" + encodeURIComponent(uid) +
+      "&apiUrl=" + encodeURIComponent(apiUrl)
+    );
     var d = await res.json();
     window.__RISK_BANNED__ = !!(d && d.banned);
-    window.__RISK_BAN_MSG__ = (d && d.message) || "账号已被封禁";
+window.__RISK_BAN_MSG__ = (d && (d.message || d.reason)) || "账号已被封禁";
     return !window.__RISK_BANNED__;
   } catch (e) {
-    // 网络异常时不拦截，避免误杀
     return true;
   }
 }
@@ -1148,7 +1152,6 @@ async function sendMsg() {
     }
 
     appendMsg(msg);
-    riskLog("user", text); // 关键：用户消息上报
 
     input.value = '';
     autoGrow(input);
