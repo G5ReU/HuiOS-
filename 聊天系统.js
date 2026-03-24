@@ -1,4 +1,6 @@
-
+setTimeout(function() {
+    initWebPush();
+}, 1000);
 // ===== 风控接入（最小版）=====
 const RISK_API = "https://huios-push-production.up.railway.app";
 
@@ -616,20 +618,34 @@ function bindMsgTouchEvents() {
         if (node._touchBound) return;
         node._touchBound = true;
         var idx = parseInt(node.getAttribute('data-msgidx'));
-        node.addEventListener('touchstart', function(e) {
-            e.preventDefault();
-            if (!e.touches || !e.touches[0]) return;
-            longPressSaved = {
-                x: e.touches[0].clientX,
-                y: e.touches[0].clientY,
-                idx: idx
-            };
-            longPressTimer = setTimeout(function() {
-                if (longPressSaved !== null) {
-                    showMsgMenuAt(longPressSaved.x, longPressSaved.y, longPressSaved.idx);
-                }
-            }, 500);
-        }, { passive: false });
+node.addEventListener('touchstart', function(e) {
+    var t = e.target;
+
+    // 这些可交互元素不拦截，交给它们自己的点击逻辑
+    if (t.closest('.msg-voice') ||
+        t.closest('.msg-image') ||
+        t.closest('.msg-location-card') ||
+        t.closest('.msg-invite-card') ||
+        t.closest('.invite-btn-accept') ||
+        t.closest('.invite-btn-view') ||
+        t.closest('.msg-call-bubble') ||
+        t.closest('button') ||
+        t.closest('a')) {
+        return;
+    }
+
+    if (!e.touches || !e.touches[0]) return;
+    longPressSaved = {
+        x: e.touches[0].clientX,
+        y: e.touches[0].clientY,
+        idx: idx
+    };
+    longPressTimer = setTimeout(function() {
+        if (longPressSaved !== null) {
+            showMsgMenuAt(longPressSaved.x, longPressSaved.y, longPressSaved.idx);
+        }
+    }, 500);
+}, { passive: true });
         node.addEventListener('touchend', function() {
             if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
             longPressSaved = null;
@@ -721,7 +737,7 @@ if (newHtml || timeLabelHtml) {
 el.insertAdjacentHTML('beforeend', timeLabelHtml + newHtml);
 bindMsgTouchEvents();
 
-            var lastChild = el.lastElementElement;
+var lastChild = el.lastElementChild;
             if (lastChild) {
                 lastChild.classList.add('msg-new');
                 setTimeout(function() { 
@@ -859,39 +875,31 @@ var voicePlayTimer = null;
 
 function playVoice(el, idx, duration) {
     var textEl = $('vt' + idx);
-    
-    // 如果正在播放，停止并收起文字
+
     if (el.classList.contains('playing')) {
+        // 正在播放：停止动画，收起转文字
         el.classList.remove('playing');
-        if (voicePlayTimer) {
-            clearTimeout(voicePlayTimer);
-            voicePlayTimer = null;
-        }
-        // 收起转文字气泡
+        if (voicePlayTimer) { clearTimeout(voicePlayTimer); voicePlayTimer = null; }
         if (textEl) textEl.classList.remove('show');
         return;
     }
-    
-    // 停止其他正在播放的语音
+
+    // 停止其他正在播放的语音动画（不收起其他的转文字）
     document.querySelectorAll('.msg-voice.playing').forEach(function(v) {
         v.classList.remove('playing');
     });
-    // 收起其他转文字气泡
-    document.querySelectorAll('.voice-text.show').forEach(function(t) {
-        t.classList.remove('show');
-    });
-    if (voicePlayTimer) {
-        clearTimeout(voicePlayTimer);
-        voicePlayTimer = null;
+    if (voicePlayTimer) { clearTimeout(voicePlayTimer); voicePlayTimer = null; }
+
+    // 展开/收起当前转文字（切换）
+    if (textEl) {
+        if (textEl.classList.contains('show')) {
+            textEl.classList.remove('show');
+        } else {
+            textEl.classList.add('show');
+        }
     }
-    
-    // 显示当前转文字
-    if (textEl) textEl.classList.add('show');
-    
-    // 开始播放动画
+
     el.classList.add('playing');
-    
-    // 根据时长定时停止（但不收起文字，让用户手动收）
     voicePlayTimer = setTimeout(function() {
         el.classList.remove('playing');
         voicePlayTimer = null;
@@ -1136,8 +1144,8 @@ async function sendMsg() {
     if (!text || !curChar) return;
     if (!D.api.key) return toast('请先配置API');
 
-    var ok = await riskStatusCheck();
-    if (!ok) {
+    // 用缓存状态，不等待网络，发消息零延迟
+    if (window.__RISK_BANNED__) {
         toast(window.__RISK_BAN_MSG__ || '账号已被封禁');
         return;
     }
@@ -1681,26 +1689,6 @@ function cClick(id) {
     if (swipedId) { document.querySelector('.contact-item[data-id="'+swipedId+'"]')?.classList.remove('swiped'); swipedId = null; return; }
     openChat(id);
 }
-// ========== 语音气泡收起修复 ==========
-function playVoice(el, idx, duration) {
-    var textEl = $('vt' + idx);
-    if (el.classList.contains('playing')) {
-        el.classList.remove('playing');
-        if (voicePlayTimer) { clearTimeout(voicePlayTimer); voicePlayTimer = null; }
-        if (textEl) textEl.classList.remove('show');
-        return;
-    }
-    document.querySelectorAll('.msg-voice.playing').forEach(function(v) { v.classList.remove('playing'); });
-    document.querySelectorAll('.voice-text.show').forEach(function(t) { t.classList.remove('show'); });
-    if (voicePlayTimer) { clearTimeout(voicePlayTimer); voicePlayTimer = null; }
-    if (textEl) textEl.classList.add('show');
-    el.classList.add('playing');
-    voicePlayTimer = setTimeout(function() {
-        el.classList.remove('playing');
-        voicePlayTimer = null;
-    }, duration * 1000);
-}
-// ========== 编辑本轮回复 ==========
 // ========== 编辑本轮回复 ==========
 var editAiRoundData = []; // 存储当前编辑的消息
 
@@ -2046,17 +2034,6 @@ function needTimeLabel(prevMsg, curMsg) {
     if (!prevMsg) return true; // 第一条消息前总是显示
     // sys消息不参与判断（忽略它，用它前面最近的非sys消息）
     return get5MinSlot(prevMsg.time) !== get5MinSlot(curMsg.time);
-}
-function fmtTimeLabel(ts) {
-    var d = new Date(ts);
-    var now = new Date();
-    var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
-    var hm = pad(d.getHours()) + ':' + pad(d.getMinutes());
-    if (d.toDateString() === now.toDateString()) return hm;
-    var yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
-    if (d.toDateString() === yesterday.toDateString()) return '昨天 ' + hm;
-    if (d.getFullYear() === now.getFullYear()) return (d.getMonth()+1) + '月' + d.getDate() + '日 ' + hm;
-    return d.getFullYear() + '年' + (d.getMonth()+1) + '月' + d.getDate() + '日 ' + hm;
 }
 
 function fmtDuration(ms) {

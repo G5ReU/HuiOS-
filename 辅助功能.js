@@ -603,3 +603,77 @@ openHearts = function() {
         startHeartRateAnimation(last.heartRate);
     }
 };
+const PUSH_API = "https://huios-push-production.up.railway.app";
+
+function sendBgPush(opt) {
+    try {
+        var userId = getRiskUserId();
+        if (!userId) return;
+
+        fetch(PUSH_API + "/send-push", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                userId: String(userId),
+                title: opt.title || "HuiOS",
+                body: opt.body || "",
+                url: opt.url || "https://huios.pages.dev",
+                tag: opt.tag || "huios-push",
+                icon: opt.icon || ""
+            })
+        }).catch(function(err) {
+            console.warn("sendBgPush 请求失败:", err);
+        });
+    } catch (e) {
+        console.warn("sendBgPush 失败:", e);
+    }
+}
+function urlBase64ToUint8Array(base64String) {
+    var padding = "=".repeat((4 - base64String.length % 4) % 4);
+    var base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    var rawData = atob(base64);
+    var outputArray = new Uint8Array(rawData.length);
+    for (var i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+}
+
+async function initWebPush() {
+    try {
+        if (!("serviceWorker" in navigator)) return;
+        if (!("PushManager" in window)) return;
+
+        var reg = await navigator.serviceWorker.register("/sw.js");
+        var permission = await Notification.requestPermission();
+        if (permission !== "granted") {
+            console.warn("通知权限未开启");
+            return;
+        }
+
+        var publicKey = await fetch(PUSH_API + "/vapid-public-key").then(function(r) {
+            return r.text();
+        });
+
+        var sub = await reg.pushManager.getSubscription();
+        if (!sub) {
+            sub = await reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: urlBase64ToUint8Array(publicKey)
+            });
+        }
+
+        await fetch(PUSH_API + "/subscribe", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                userId: getRiskUserId(),
+                sub: sub
+            })
+        });
+
+        console.log("Web Push 订阅成功");
+    } catch (e) {
+        console.warn("Web Push 初始化失败:", e);
+    }
+}
