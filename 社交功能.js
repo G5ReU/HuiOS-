@@ -207,8 +207,8 @@ function viewStickerFull(url) {
     $('imageViewer').classList.add('active');
 }
 // 备忘录的空兜底函数，防止当前阶段报错卡死
-function getMemoForAI() {
-    return '';
+if (typeof window.getMemoForAI !== 'function') {
+    window.getMemoForAI = function() { return ''; };
 }
 function openEditSticker(id) {
     var data = getAccData();

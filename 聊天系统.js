@@ -1,12 +1,12 @@
-setTimeout(function() {
-    initWebPush();
-}, 1000);
+
 // ===== 风控接入（最小版）=====
-const RISK_API = "https://huios-push-production.up.railway.app";
+const RISK_API = "https://huios-push.onrender.com";
 
 function getRiskUserId() {
+  if (typeof getUnifiedUserId === "function") return getUnifiedUserId();
+
   if (typeof D !== "undefined" && D.currentAccId) return String(D.currentAccId);
-  var k = "huios_uid"; // 统一
+  var k = "huios_uid";
   var id = localStorage.getItem(k);
   if (!id) {
     id = "u_" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
@@ -83,7 +83,10 @@ function renderMyPage() {
 
 function renderMoments() {
     var data = getAccData(); if (!data) return;
-    var h = '<div style="padding:10px 10px 0;text-align:right"><button class="empty-btn" style="padding:8px 18px;font-size:13px" onclick="openPublish()">+ 发朋友圈</button></div>';
+var h = '<div style="padding:10px 10px 0;display:flex;justify-content:flex-end;gap:8px">';
+h += '<button class="empty-btn" style="padding:8px 14px;font-size:13px;background:#f0f0f0;color:var(--text-dark)" onclick="openMomentCleanMenu()">🧹 清理</button>';
+h += '<button class="empty-btn" style="padding:8px 18px;font-size:13px" onclick="openPublish()">+ 发朋友圈</button>';
+h += '</div>';
     
     if (!data.moments.length) {
         h += '<div class="empty-state" style="padding-top:40px"><div class="empty-icon">📷</div><div class="empty-title">还没有动态</div></div>';
@@ -688,180 +691,129 @@ function doPatByType(type) {
     }
     appendMsg({ role: 'sys', type: 'sys', content: content, time: Date.now() });
 }
-
-function appendMsgToChat(charId, msg) {
+    function appendMsgToChat(charId, msg) {
     var data = getAccData();
     if (!charId || !data || !data.chats[charId]) return -1;
-    
+
     data.chats[charId].push(msg);
     save();
-    // 新增：自动上报最近消息（AI/用户）
+
+    // 风控日志
     if (msg && (msg.role === 'ai' || msg.role === 'user') && msg.type !== 'sys' && !msg.recalled) {
         var contentForLog = msg.content || msg.imageDesc || msg.stickerDesc || (msg.type === 'voice' ? '[语音]' : '');
         if (contentForLog) {
             riskLog(msg.role === 'ai' ? 'assistant' : 'user', contentForLog);
         }
     }
-    
+
     var idx = data.chats[charId].length - 1;
-    
+
     if (curChar && curChar.id === charId) {
         var el = $('messages');
         var msgs = data.chats[charId];
-        
+
         if (msgs.length <= 1 || !el.querySelector('[data-idx]')) {
             renderMsgs(true);
-if (typeof checkAutoSummary === 'function') checkAutoSummary(charId);
-            return idx;
-        }
-        
-        // ★ 更新前一条消息的气泡样式
-updatePrevBubbleStyle(charId, idx);
-        
-// 判断是否需要在新消息前插时间戳
-var timeLabelHtml = '';
-if (msg.type !== 'sys' && !msg.recalled) {
-    // 找前一条非sys、非recalled消息
-    var prevNonSys = null;
-    for (var pi = idx - 1; pi >= 0; pi--) {
-        var pm = msgs[pi];
-        if (pm.type !== 'sys' && !pm.recalled) { prevNonSys = pm; break; }
-    }
-    if (needTimeLabel(prevNonSys, msg)) {
-        timeLabelHtml = renderTimeLabel(msg.time);
-    }
-}
-var newHtml = renderMsg(msg, idx);
-if (newHtml || timeLabelHtml) {
+        } else {
+            updatePrevBubbleStyle(charId, idx);
 
-el.insertAdjacentHTML('beforeend', timeLabelHtml + newHtml);
-bindMsgTouchEvents();
-
-var lastChild = el.lastElementChild;
-            if (lastChild) {
-                lastChild.classList.add('msg-new');
-                setTimeout(function() { 
-                    if (lastChild) lastChild.classList.remove('msg-new'); 
-                }, 350);
+            var timeLabelHtml = '';
+            if (msg.type !== 'sys' && !msg.recalled) {
+                var prevNonSys = null;
+                for (var pi = idx - 1; pi >= 0; pi--) {
+                    var pm = msgs[pi];
+                    if (pm.type !== 'sys' && !pm.recalled) { prevNonSys = pm; break; }
+                }
+                if (needTimeLabel(prevNonSys, msg)) {
+                    timeLabelHtml = renderTimeLabel(msg.time);
+                }
             }
+
+            var newHtml = renderMsg(msg, idx);
+            if (newHtml || timeLabelHtml) {
+                el.insertAdjacentHTML('beforeend', timeLabelHtml + newHtml);
+                bindMsgTouchEvents();
+
+                var lastChild = el.lastElementChild;
+                if (lastChild) {
+                    lastChild.classList.add('msg-new');
+                    setTimeout(function() {
+                        if (lastChild) lastChild.classList.remove('msg-new');
+                    }, 350);
+                }
+            }
+            el.scrollTop = el.scrollHeight;
         }
-        el.scrollTop = el.scrollHeight;
     } else {
         if (msg.role === 'ai' && msg.type !== 'sys') {
             if (!unreadCounts[charId]) unreadCounts[charId] = 0;
             unreadCounts[charId]++;
-            if ($('chatPage').classList.contains('active')) {
-                renderContacts();
-            }
+            if ($('chatPage').classList.contains('active')) renderContacts();
         }
     }
-    
+
+    // 统一触发自动总结（关键）
+    if (typeof checkAutoSummary === 'function') checkAutoSummary(charId);
     return idx;
 }
-
-// ★ 新增函数：更新前一条消息的气泡样式
-function updatePrevBubbleStyle(charId, newIdx) {
-    if (newIdx < 1) return;
-    
-    var data = getAccData();
-    var msgs = data.chats[charId] || [];
-    var newMsg = msgs[newIdx];
-    if (!newMsg || newMsg.type === 'sys') return;
-    
-    // 找前一条有效消息
-    var prevIdx = -1;
-    for (var i = newIdx - 1; i >= 0; i--) {
-        var m = msgs[i];
-        if (m.type !== 'sys' && !m.recalled) {
-            prevIdx = i;
-            break;
-        }
-    }
-    if (prevIdx < 0) return;
-    
-    var prevMsg = msgs[prevIdx];
-    
-    // 如果前一条和新消息是同一个角色，需要更新前一条的样式
-    if (prevMsg.role === newMsg.role) {
-        var prevEl = document.querySelector('[data-idx="' + prevIdx + '"]');
-        if (prevEl) {
-            // 移除旧的bubble类
-            prevEl.classList.remove('bubble-single', 'bubble-first', 'bubble-middle', 'bubble-last');
-            
-            // 计算新的位置
-            var newPos = getBubblePosition(prevIdx, prevMsg.role);
-            prevEl.classList.add('bubble-' + newPos);
-        }
-    }
-}
-
 function appendMsg(msg) {
     var data = getAccData();
     var charId = curChar ? curChar.id : respondingCharId;
-    if (!charId || !data.chats[charId]) return -1;
-    
+    if (!charId || !data || !data.chats[charId]) return -1;
+
     data.chats[charId].push(msg);
     save();
-if (msg && (msg.role === 'ai' || msg.role === 'user') && msg.type !== 'sys' && !msg.recalled) {
-    var contentForLog = msg.content || msg.imageDesc || msg.stickerDesc || (msg.type === 'voice' ? '[语音]' : '');
-    if (contentForLog) {
-        riskLog(msg.role === 'ai' ? 'assistant' : 'user', contentForLog);
+
+    if (msg && (msg.role === 'ai' || msg.role === 'user') && msg.type !== 'sys' && !msg.recalled) {
+        var contentForLog = msg.content || msg.imageDesc || msg.stickerDesc || (msg.type === 'voice' ? '[语音]' : '');
+        if (contentForLog) riskLog(msg.role === 'ai' ? 'assistant' : 'user', contentForLog);
     }
-}
-    
+
     var idx = data.chats[charId].length - 1;
-    
+
     if (curChar && curChar.id === charId) {
         var el = $('messages');
         var msgs = data.chats[charId];
-        
+
         if (msgs.length <= 1 || !el.querySelector('[data-idx]')) {
             renderMsgs(true);
-            return idx;
-        }
-        
-        // ★ 关键：更新前一条消息的气泡样式
-        updatePrevBubbleStyle(charId, idx);
-        
-        // 判断是否需要在新消息前插时间戳
-var timeLabelHtml = '';
-if (msg.type !== 'sys' && !msg.recalled) {
-    // 找前一条非sys、非recalled消息
-    var prevNonSys = null;
-    for (var pi = idx - 1; pi >= 0; pi--) {
-        var pm = msgs[pi];
-        if (pm.type !== 'sys' && !pm.recalled) { prevNonSys = pm; break; }
-    }
-    if (needTimeLabel(prevNonSys, msg)) {
-        timeLabelHtml = renderTimeLabel(msg.time);
-    }
-}
-var newHtml = renderMsg(msg, idx);
-if (newHtml || timeLabelHtml) {
+        } else {
+            updatePrevBubbleStyle(charId, idx);
 
-el.insertAdjacentHTML('beforeend', timeLabelHtml + newHtml);
-bindMsgTouchEvents();
-
-            var lastChild = el.lastElementChild;
-            if (lastChild) {
-                lastChild.classList.add('msg-new');
-                setTimeout(function() { 
-                    if (lastChild) lastChild.classList.remove('msg-new'); 
-                }, 350);
+            var timeLabelHtml = '';
+            if (msg.type !== 'sys' && !msg.recalled) {
+                var prevNonSys = null;
+                for (var pi = idx - 1; pi >= 0; pi--) {
+                    var pm = msgs[pi];
+                    if (pm.type !== 'sys' && !pm.recalled) { prevNonSys = pm; break; }
+                }
+                if (needTimeLabel(prevNonSys, msg)) timeLabelHtml = renderTimeLabel(msg.time);
             }
+
+            var newHtml = renderMsg(msg, idx);
+            if (newHtml || timeLabelHtml) {
+                el.insertAdjacentHTML('beforeend', timeLabelHtml + newHtml);
+                bindMsgTouchEvents();
+
+                var lastChild = el.lastElementChild;
+                if (lastChild) {
+                    lastChild.classList.add('msg-new');
+                    setTimeout(function() {
+                        if (lastChild) lastChild.classList.remove('msg-new');
+                    }, 350);
+                }
+            }
+            el.scrollTop = el.scrollHeight;
         }
-        el.scrollTop = el.scrollHeight;
     } else {
         if (msg.role === 'ai' && msg.type !== 'sys') {
             if (!unreadCounts[charId]) unreadCounts[charId] = 0;
             unreadCounts[charId]++;
-            if ($('chatPage').classList.contains('active')) {
-                renderContacts();
-            }
+            if ($('chatPage').classList.contains('active')) renderContacts();
         }
     }
-    
-    checkAutoSummary(charId);
+
+    if (typeof checkAutoSummary === 'function') checkAutoSummary(charId);
     return idx;
 }
 
@@ -1159,7 +1111,8 @@ async function sendMsg() {
                            (quotedMsg.content || '').slice(0, 50);
     }
 
-    appendMsg(msg);
+appendMsg(msg);
+if (typeof queueBgSync === "function") queueBgSync(200);
 
     input.value = '';
     autoGrow(input);
@@ -2009,16 +1962,24 @@ function get5MinSlot(ts) {
 
 // 格式化时间戳为显示文字
 function fmtTimeLabel(ts) {
-    var d = new Date(ts);
-    var now = new Date();
+    var d = getDateInThemeTz(ts);
+    var now = getDateInThemeTz(Date.now());
+
     var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
     var hm = pad(d.getHours()) + ':' + pad(d.getMinutes());
-    // 今天
-    if (d.toDateString() === now.toDateString()) return hm;
-    // 昨天
-    var yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
-    if (d.toDateString() === yesterday.toDateString()) return '昨天 ' + hm;
-    // 今年
+
+    function sameYMD(a, b) {
+        return a.getFullYear() === b.getFullYear() &&
+               a.getMonth() === b.getMonth() &&
+               a.getDate() === b.getDate();
+    }
+
+    if (sameYMD(d, now)) return hm;
+
+    var yesterday = new Date(now.getTime());
+    yesterday.setDate(now.getDate() - 1);
+    if (sameYMD(d, yesterday)) return '昨天 ' + hm;
+
     if (d.getFullYear() === now.getFullYear()) return (d.getMonth()+1) + '月' + d.getDate() + '日 ' + hm;
     return d.getFullYear() + '年' + (d.getMonth()+1) + '月' + d.getDate() + '日 ' + hm;
 }
@@ -2045,4 +2006,259 @@ function fmtDuration(ms) {
     if (hour < 24) return hour + '小时' + (min % 60 ? (min % 60) + '分钟' : '');
     var day = Math.floor(hour / 24);
     return day + '天' + (hour % 24 ? (hour % 24) + '小时' : '');
+}
+// 更新前一条消息的气泡样式（当新消息加入后）
+function updatePrevBubbleStyle(charId, newIdx) {
+    if (newIdx < 1) return;
+
+    var data = getAccData();
+    if (!data || !data.chats || !data.chats[charId]) return;
+
+    var msgs = data.chats[charId];
+    var newMsg = msgs[newIdx];
+    if (!newMsg || newMsg.type === 'sys' || newMsg.recalled) return;
+
+    // 找前一条有效消息（非sys、非撤回）
+    var prevIdx = -1;
+    for (var i = newIdx - 1; i >= 0; i--) {
+        var m = msgs[i];
+        if (m && m.type !== 'sys' && !m.recalled) {
+            prevIdx = i;
+            break;
+        }
+    }
+    if (prevIdx < 0) return;
+
+    var prevMsg = msgs[prevIdx];
+    if (!prevMsg || prevMsg.role !== newMsg.role) return;
+
+    // 只更新 DOM 中前一条的气泡类
+    var prevEl = document.querySelector('[data-idx="' + prevIdx + '"]');
+    if (!prevEl) return;
+
+    prevEl.classList.remove('bubble-single', 'bubble-first', 'bubble-middle', 'bubble-last');
+    var newPos = getBubblePosition(prevIdx, prevMsg.role);
+    prevEl.classList.add('bubble-' + newPos);
+}
+function _isAiMoment(m) {
+    return m && (m.authorType === 'ai' || (m.authorId && m.authorId !== 'user' && m.authorType !== 'user'));
+}
+
+function openMomentCleanMenu() {
+    var data = getAccData();
+    if (!data || !data.moments || !data.moments.length) return toast('暂无朋友圈可清理');
+
+    __showIosActionSheet('🧹 朋友圈清理', [
+        {
+            text: '清空全部朋友圈',
+            danger: true,
+            onClick: function () {
+                if (!confirm('确定清空【全部朋友圈】吗？')) return;
+                doCleanMoments('all');
+            }
+        },
+        {
+            text: '清空全部AI朋友圈',
+            danger: true,
+            onClick: function () {
+                if (!confirm('确定清空【全部AI朋友圈】吗？')) return;
+                doCleanMoments('aiAll');
+            }
+        },
+        {
+            text: '按某个AI清空',
+            onClick: function () {
+                openMomentCleanCharSheet();
+            }
+        },
+        {
+            text: '清空我发的朋友圈',
+            danger: true,
+            onClick: function () {
+                if (!confirm('确定清空【我发的朋友圈】吗？')) return;
+                doCleanMoments('user');
+            }
+        }
+    ]);
+}
+function __getTopModalZ() {
+    var maxZ = 1000;
+    document.querySelectorAll('.modal.active, .choice-modal.active, .error-modal.active').forEach(function(el) {
+        var z = parseInt(window.getComputedStyle(el).zIndex, 10);
+        if (isFinite(z) && z > maxZ) maxZ = z;
+    });
+    return maxZ;
+}
+
+function __closeIosActionSheet() {
+    var mask = document.getElementById('iosActionSheetMask');
+    if (!mask) return;
+    mask.style.opacity = '0';
+    var panel = mask.querySelector('.ios-action-sheet-panel');
+    if (panel) panel.style.transform = 'translateY(20px)';
+    setTimeout(function() {
+        if (mask && mask.parentNode) mask.parentNode.removeChild(mask);
+    }, 180);
+}
+
+function __showIosActionSheet(title, actions) {
+    __closeIosActionSheet();
+
+    var topZ = __getTopModalZ();
+    var baseZ = Math.max(20000, topZ + 20); // 关键：永远盖在现有弹窗上
+
+    var mask = document.createElement('div');
+    mask.id = 'iosActionSheetMask';
+    mask.style.cssText = [
+        'position:fixed',
+        'inset:0',
+        'background:rgba(0,0,0,0.22)',
+        'backdrop-filter:blur(4px)',
+        '-webkit-backdrop-filter:blur(4px)',
+        'display:flex',
+        'align-items:flex-end',
+        'justify-content:center',
+        'padding:10px',
+        'opacity:0',
+        'transition:opacity .18s ease',
+        'z-index:' + baseZ
+    ].join(';');
+
+    var panel = document.createElement('div');
+    panel.className = 'ios-action-sheet-panel';
+    panel.style.cssText = [
+        'width:min(520px,96vw)',
+        'transform:translateY(20px)',
+        'transition:transform .2s ease',
+        'font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",sans-serif'
+    ].join(';');
+
+    var card = document.createElement('div');
+    card.style.cssText = [
+        'background:rgba(255,255,255,0.92)',
+        'backdrop-filter:blur(22px)',
+        '-webkit-backdrop-filter:blur(22px)',
+        'border-radius:14px',
+        'overflow:hidden',
+        'box-shadow:0 12px 36px rgba(0,0,0,.18)'
+    ].join(';');
+
+    if (title) {
+        var hd = document.createElement('div');
+        hd.textContent = title;
+        hd.style.cssText = 'padding:12px 14px;font-size:13px;color:#8a8a8f;text-align:center;border-bottom:1px solid rgba(60,60,67,.16)';
+        card.appendChild(hd);
+    }
+
+    (actions || []).forEach(function(a, i) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = a.text || '操作';
+        btn.style.cssText = [
+            'width:100%',
+            'border:none',
+            'background:transparent',
+            'padding:15px 12px',
+            'font-size:17px',
+            'line-height:1.2',
+            'color:' + (a.danger ? '#ff3b30' : '#007aff'),
+            'cursor:pointer',
+            'border-top:' + (i > 0 ? '1px solid rgba(60,60,67,.16)' : 'none')
+        ].join(';');
+        btn.onclick = function(e) {
+            e.stopPropagation();
+            __closeIosActionSheet();
+            setTimeout(function() {
+                if (typeof a.onClick === 'function') a.onClick();
+            }, 180);
+        };
+        card.appendChild(btn);
+    });
+
+    var cancelWrap = document.createElement('div');
+    cancelWrap.style.cssText = 'height:8px';
+
+    var cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.textContent = '取消';
+    cancelBtn.style.cssText = [
+        'width:100%',
+        'border:none',
+        'background:rgba(255,255,255,0.96)',
+        'backdrop-filter:blur(22px)',
+        '-webkit-backdrop-filter:blur(22px)',
+        'padding:15px 12px',
+        'font-size:17px',
+        'font-weight:600',
+        'color:#007aff',
+        'border-radius:14px',
+        'box-shadow:0 8px 22px rgba(0,0,0,.12)'
+    ].join(';');
+    cancelBtn.onclick = function(e) {
+        e.stopPropagation();
+        __closeIosActionSheet();
+    };
+
+    panel.appendChild(card);
+    panel.appendChild(cancelWrap);
+    panel.appendChild(cancelBtn);
+    mask.appendChild(panel);
+
+    mask.addEventListener('click', function(e) {
+        if (e.target === mask) __closeIosActionSheet();
+    });
+
+    document.body.appendChild(mask);
+
+    requestAnimationFrame(function() {
+        mask.style.opacity = '1';
+        panel.style.transform = 'translateY(0)';
+    });
+}
+function openMomentCleanCharSheet() {
+    var data = getAccData();
+    var aiChars = (data.chars || []).filter(function(c) {
+        return data.moments.some(function(m) { return _isAiMoment(m) && m.authorId === c.id; });
+    });
+
+    if (!aiChars.length) return toast('没有可清理的AI朋友圈');
+
+    var actions = aiChars.map(function(c) {
+        return {
+            text: '清空 ' + (c.displayName || c.realName || c.id),
+            danger: true,
+            onClick: function () {
+                if (!confirm('确定清空【' + (c.displayName || c.realName) + '】的朋友圈吗？')) return;
+                doCleanMoments('char', c.id);
+            }
+        };
+    });
+
+    __showIosActionSheet('选择要清理的AI', actions);
+}
+
+function doCleanMoments(mode, charId) {
+    var data = getAccData();
+    if (!data || !Array.isArray(data.moments)) return;
+
+    var before = data.moments.length;
+
+    if (mode === 'all') {
+        data.moments = [];
+    } else if (mode === 'aiAll') {
+        data.moments = data.moments.filter(function(m) { return !_isAiMoment(m); });
+    } else if (mode === 'user') {
+        data.moments = data.moments.filter(function(m) { return !(m.authorType === 'user' || m.authorId === 'user'); });
+    } else if (mode === 'char') {
+        data.moments = data.moments.filter(function(m) { return !(_isAiMoment(m) && m.authorId === charId); });
+    }
+
+    var removed = before - data.moments.length;
+    if (removed <= 0) return toast('没有可清理内容');
+
+    save();
+    if (typeof queueBgSync === 'function') queueBgSync(0);
+    renderMoments();
+    if ($('myMomentsPage') && $('myMomentsPage').classList.contains('active')) openMyMoments();
+    toast('已清理 ' + removed + ' 条朋友圈');
 }

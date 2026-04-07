@@ -28,7 +28,12 @@ function pickColor(i) {
     save(); applyTheme(); renderColors(); toast('主题已更换');
 }
 
-function saveTz() { D.theme.tz = parseFloat($('tzSelect').value); save(); updateClock(); }
+function saveTz() {
+    D.theme.tz = parseFloat($('tzSelect').value);
+    if (!isFinite(D.theme.tz)) D.theme.tz = 8;
+    save();
+    updateClock();
+}
 
 function openAvatarSetting() {
     var mode = D.theme.avatarMode || 'none';
@@ -73,8 +78,8 @@ function loadSettingsUI() {
     $('polliModel').value = D.settings.polliModel || 'flux';
     $('bgOn').checked = D.settings.bgOn;
     $('bgInterval').value = D.settings.bgInterval;
-    $('bgDmOn').checked = D.settings.bgDmOn;
-    $('bgMomentOn').checked = D.settings.bgMomentOn;
+   if ($('bgDmOn')) $('bgDmOn').checked = true;
+if ($('bgMomentOn')) $('bgMomentOn').checked = true;
     $('imgSizeSelect').value = D.settings.imgSize || 512;
     $('imgQualityRange').value = D.settings.imgQuality || 0.6;
     $('imgQualityVal').textContent = D.settings.imgQuality || 0.6;
@@ -96,8 +101,8 @@ function saveSettings() {
     D.settings.polliModel = $('polliModel').value;
     D.settings.bgOn = $('bgOn').checked;
     D.settings.bgInterval = parseInt($('bgInterval').value) || 120;
-    D.settings.bgDmOn = $('bgDmOn').checked;
-    D.settings.bgMomentOn = $('bgMomentOn').checked;
+D.settings.bgDmOn = true;
+D.settings.bgMomentOn = true;
     D.settings.imgSize = parseInt($('imgSizeSelect').value) || 512;
     D.settings.imgQuality = parseFloat($('imgQualityRange').value) || 0.6;
     $('imgQualityVal').textContent = D.settings.imgQuality;
@@ -106,6 +111,9 @@ function saveSettings() {
     updatePolliVis();
     updateBgVis();
     updateDelayVis();
+
+    // 关键：后台开关变化后立即同步到服务端
+    if (typeof queueBgSync === 'function') queueBgSync(0);
 }
 
 function updateDelayVis() {
@@ -315,16 +323,16 @@ else if (t === 'editAccAvatar') {
 }
 
 function updateClock() {
-    var now = new Date(), utc = now.getTime() + now.getTimezoneOffset() * 60000;
-    var local = new Date(utc + D.theme.tz * 3600000);
+    var local = getDateInThemeTz(Date.now());
     $('clockTime').textContent = String(local.getHours()).padStart(2,'0') + ':' + String(local.getMinutes()).padStart(2,'0');
     $('clockDate').textContent = local.toLocaleDateString('zh-CN', {year:'numeric',month:'long',day:'numeric',weekday:'long'});
-    $('clockTz').textContent = (D.theme.tz >= 0 ? 'UTC+' : 'UTC') + D.theme.tz;
+    var tz = getThemeTzOffsetHours();
+    $('clockTz').textContent = (tz >= 0 ? 'UTC+' : 'UTC') + tz;
 }
 
 function getTimeStr() {
-    var now = new Date(), utc = now.getTime() + now.getTimezoneOffset() * 60000;
-    var local = new Date(utc + D.theme.tz * 3600000), h = local.getHours();
+    var local = getDateInThemeTz(Date.now());
+    var h = local.getHours();
     var p = h < 6 ? '凌晨' : h < 9 ? '早上' : h < 12 ? '上午' : h < 14 ? '中午' : h < 18 ? '下午' : h < 22 ? '晚上' : '深夜';
     return p + h + ':' + String(local.getMinutes()).padStart(2,'0');
 }
@@ -569,23 +577,26 @@ function openBgCharSelect() {
     var data = getAccData();
     if (!data) return toast('请先创建账号');
     if (!data.chars || !data.chars.length) return toast('请先创建角色');
+
     var h = '';
+    h += '<div style="padding:10px;border-bottom:1px solid #f0f0f0;display:flex;gap:8px;flex-wrap:wrap;background:#fff;position:sticky;top:0;z-index:2">';
+    h += '<button class="empty-btn" style="padding:6px 10px;font-size:12px" onclick="bgCharSetAll(true)">全选</button>';
+    h += '<button class="empty-btn" style="padding:6px 10px;font-size:12px;background:#f3f3f3;color:var(--text-dark)" onclick="bgCharSetAll(false)">全不选</button>';
+    h += '<button class="empty-btn" style="padding:6px 10px;font-size:12px;background:#f3f3f3;color:var(--text-dark)" onclick="bgCharInvert()">反选</button>';
+    h += '<button class="empty-btn" style="padding:6px 10px;font-size:12px;background:#f3f3f3;color:var(--text-dark)" onclick="bgCharOnlyCurrent()">仅当前聊天</button>';
+    h += '</div>';
+
     for (var i = 0; i < data.chars.length; i++) {
         var c = data.chars[i];
         var chk = c.bgEnabled ? ' checked' : '';
         h += '<div style="padding:12px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;gap:10px">';
-        h += '<input type="checkbox" id="bgc_'+c.id+'"'+chk+' style="width:20px;height:20px">';
-        h += '<label for="bgc_'+c.id+'" style="flex:1;cursor:pointer;font-size:14px">'+esc(c.displayName)+'</label>';
+        h += '<input type="checkbox" data-bg-char="1" id="bgc_' + c.id + '"' + chk + ' style="width:20px;height:20px">';
+        h += '<label for="bgc_' + c.id + '" style="flex:1;cursor:pointer;font-size:14px">' + esc(c.displayName || c.realName || '未命名角色') + '</label>';
         h += '</div>';
     }
+
     $('bgCharList').innerHTML = h;
     openModal('bgCharModal');
-}
-
-function saveBgChars() {
-    var data = getAccData();
-    data.chars.forEach(function(c) { c.bgEnabled = $('bgc_'+c.id)?.checked || false; });
-    save(); closeModal('bgCharModal'); toast('已保存');
 }
 
 document.addEventListener('click', function(e) {
@@ -1086,6 +1097,95 @@ function pushNotify(title, body, opts) {
     }
 }
 
+function getBgCharCheckboxes() {
+    return document.querySelectorAll('#bgCharList input[type="checkbox"][data-bg-char="1"]');
+}
+
+function bgCharSetAll(checked) {
+    var boxes = getBgCharCheckboxes();
+    boxes.forEach(function(b) { b.checked = !!checked; });
+}
+
+function bgCharInvert() {
+    var boxes = getBgCharCheckboxes();
+    boxes.forEach(function(b) { b.checked = !b.checked; });
+}
+
+function bgCharOnlyCurrent() {
+    if (!curChar || !curChar.id) return toast('请先进入一个角色聊天');
+    var boxes = getBgCharCheckboxes();
+    boxes.forEach(function(b) {
+        b.checked = (b.id === ('bgc_' + curChar.id));
+    });
+}
+function saveBgChars() {
+    var data = getAccData();
+    var n = 0;
+    data.chars.forEach(function(c) {
+        var on = $('bgc_'+c.id) ? $('bgc_'+c.id).checked : false;
+        c.bgEnabled = on;
+        if (on) n++;
+    });
+    save();
+    if (typeof queueBgSync === 'function') queueBgSync(0);
+    closeModal('bgCharModal');
+    toast('已保存（已启用 ' + n + ' 个角色）');
+}
+// 顶部的问候彩蛋
+window.playGreetingInteract = function(e) {
+    const sub = document.getElementById('greetingSub');
+    const msgs = ["今天也要元气满满！", "随时准备就绪 🚀", "摸摸头 ( ´･ω･)ﾉ", "喝杯水休息一下☕", "有什么想和我分享的？"];
+    sub.style.opacity = '0';
+    sub.style.transform = 'translateY(-5px)';
+    setTimeout(() => {
+        sub.innerText = msgs[Math.floor(Math.random() * msgs.length)];
+        sub.style.opacity = '1';
+        sub.style.transform = 'translateY(0)';
+    }, 200);
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const container = document.getElementById('particleContainer');
+    for(let i=0; i<5; i++) {
+        let p = document.createElement('div');
+        p.className = 'particle';
+        p.innerText = ['✨', '🌟', '💫', '☀️'][Math.floor(Math.random() * 4)];
+        p.style.left = (rect.left + 20) + 'px';
+        p.style.top = (rect.top + 20) + 'px';
+        let angle = Math.random() * Math.PI * 2;
+        p.style.setProperty('--tx', (Math.cos(angle) * 60) + 'px');
+        p.style.setProperty('--ty', (Math.sin(angle) * 60 - 30) + 'px');
+        container.appendChild(p);
+        setTimeout(() => p.remove(), 1000);
+    }
+};
+
+// 桌面专用的“狂点送心”解压玩具彩蛋
+window.playHeartAnim = function(e) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2 - 10;
+    const container = document.getElementById('particleContainer');
+    
+    // 让卡片里的白心短暂变成红心
+    const icon = e.currentTarget.querySelector('.heart-icon');
+    if (icon) {
+        icon.innerText = '❤️';
+        icon.style.transform = 'scale(1.2)';
+        icon.style.transition = 'transform 0.1s';
+        setTimeout(() => { icon.innerText = '🤍'; icon.style.transform = 'scale(1)'; }, 200);
+    }
+    
+    // 往外喷射随机漂浮的爱心
+    for(let i=0; i<3; i++) {
+        let p = document.createElement('div');
+        p.className = 'floating-heart';
+        p.innerText = ['❤️','💖','💕','💘'][Math.floor(Math.random()*4)];
+        p.style.left = (x - 14 + (Math.random() * 30 - 15)) + 'px';
+        p.style.top = (y - 14 + (Math.random() * 20 - 10)) + 'px';
+        container.appendChild(p);
+        setTimeout(() => p.remove(), 1000);
+    }
+};
 // 启动
 init();
 if (typeof dbgInit === 'function') dbgInit();

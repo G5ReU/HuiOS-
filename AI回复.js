@@ -59,25 +59,28 @@ if (callMemCount > 0) {
             p += '请基于上述状态继续发展情绪和剧情。\n\n';
         }
     }
-    p += '【当前时间】' + getTimeStr() + '\n\n';
-    var memoInfo = typeof getMemoForAI === 'function' ? getMemoForAI() : '';
-    if (memoInfo) p += memoInfo;
-    if (D.settings.timeAware) {
-        var now = new Date();
-        var utc = now.getTime() + now.getTimezoneOffset() * 60000;
-        var local = new Date(utc + D.theme.tz * 3600000);
-        var hour = local.getHours();
-        var days = ['周日','周一','周二','周三','周四','周五','周六'];
-        p += '【时间感知】\n现在是' + days[local.getDay()] + '，';
-        if (hour < 6) p += '凌晨时分。\n\n';
-        else if (hour < 9) p += '早晨时间。\n\n';
-        else if (hour < 12) p += '上午时间。\n\n';
-        else if (hour < 14) p += '午餐时间。\n\n';
-        else if (hour < 18) p += '下午时间。\n\n';
-        else if (hour < 20) p += '傍晚时分。\n\n';
-        else if (hour < 23) p += '晚上时间。\n\n';
-        else p += '深夜了。\n\n';
-    }
+var nowTs = Date.now();
+var local = getDateInThemeTz(nowTs);
+var tzHour = getThemeTzOffsetHours();
+
+p += '【当前时间】' + fmtDateTimeByThemeTz(nowTs) + '（UTC' + (tzHour >= 0 ? '+' : '') + tzHour + '，24小时制）\n\n';
+
+var memoInfo = typeof getMemoForAI === 'function' ? getMemoForAI() : '';
+if (memoInfo) p += memoInfo;
+
+if (D.settings.timeAware) {
+    var hour = local.getHours();
+    var days = ['周日','周一','周二','周三','周四','周五','周六'];
+    p += '【时间感知】\n现在是' + days[local.getDay()] + '，';
+    if (hour < 6) p += '凌晨时分。\n\n';
+    else if (hour < 9) p += '早晨时间。\n\n';
+    else if (hour < 12) p += '上午时间。\n\n';
+    else if (hour < 14) p += '午餐时间。\n\n';
+    else if (hour < 18) p += '下午时间。\n\n';
+    else if (hour < 20) p += '傍晚时分。\n\n';
+    else if (hour < 23) p += '晚上时间。\n\n';
+    else p += '深夜了。\n\n';
+}
     // 读取聊天记录中的时间戳信息
     var _chatMsgs = (data.chats[charId] || []).filter(function(m) {
         return m.type !== 'sys' && !m.recalled && m.time;
@@ -109,6 +112,9 @@ if (callMemCount > 0) {
         p += '【发消息方式】\n像真人发微信一样，一句话一条消息，用<SPLIT>分开。\n例：嗯嗯<SPLIT>那你现在在干嘛<SPLIT>我刚吃完饭\n每条5-25字左右，自然分段。\n\n';
     }
     p += '【特殊功能】\n';
+    p += '- 关系变化：<relation intimacy="+1" trust="+1" mood="+2" reason="原因">\n';
+    p += '- 创建约定：<task create title="约定名称" desc="详细描述" rewardIntimacy="2">\n';
+    p += '- 更新记忆：<memory upsert scope="profile" key="属性名" value="内容">\n';
     p += '- 语音消息：<VOICE>内容</VOICE>\n';
 p += '- 内心与状态（每轮必须）：<HEART>内心想法</HEART><STATE>状态描述</STATE><RATE>数字</RATE>（心率，40-180之间的纯数字）\n';
 p += '  注意：闭合标签必须有斜杠，如</HEART>，不能写成<HEART>。\n';
@@ -350,10 +356,16 @@ function normalResp(messages) {
         hideTyping();
         if (d.error) throw new Error(d.error.message);
         if (!d.choices || !d.choices[0]) throw new Error('AI返回为空');
-        processResp(d.choices[0].message.content);
+        var waitMs = processResp(d.choices[0].message.content) || 0;
+        setTimeout(function() {
+            finishResp();
+        }, waitMs + 50);
     })
-    .catch(function(e) { hideTyping(); showError(e.message, true); })
-    .finally(finishResp);
+    .catch(function(e) {
+        hideTyping();
+        showError(e.message, true);
+        finishResp();
+    });
 }
 
 function streamResp(messages) {
@@ -400,8 +412,11 @@ if (result.done) {
     if (tmp.parentNode) tmp.remove();
     // 用 setTimeout 确保 DOM 清理完成后再插入真实消息
     setTimeout(function() {
-        if (fullText.trim()) processResp(fullText);
-        finishResp();
+var waitMs = 0;
+if (fullText.trim()) waitMs = processResp(fullText) || 0;
+setTimeout(function() {
+    finishResp();
+}, waitMs + 50);
     }, 0);
     return;
 }
@@ -496,14 +511,21 @@ function finishResp() {
 function processResp(text) {
     text = String(text || '');
 
+// 记录原始文本里是否有“结构化标签消息”（语音/图片/朋友圈/邮件/转账等）
+var hadStructuredTag = /<(VOICE|MOMENT|LIKE|COMMENT|DEL_MOMENT|ADDPLACE|MOVETO|SHARELOC|INVITE|TRANSFER|TRANSFER_ACCEPT|TRANSFER_REJECT|EMAIL|CALL|STICKER|IMAGE|RECALL|PAT|SELFPAT|relation|task|memory)\b/i.test(text);
+
     // 去掉 INTERNAL STATE 以及后续分析
     text = text.replace(/`?INTERNAL STATE`?[\s\S]*$/i, '').trim();
+    // 【新增：拦截并执行 AI 的约定、关系、记忆标签】
+    if (typeof applyTagsFromText === 'function') {
+        text = applyTagsFromText(text, { charId: savedCharId });
+    }
 
     // 如果前面混进了英文分析，只保留第一个合法标签开始后的内容
     var firstTagIdx = text.search(/<(HEART|STATE|RATE|VOICE|MOMENT|LIKE|COMMENT|RECALL|IMAGE|DESC|QUOTE|STICKER|EMAIL|TRANSFER|PAT|SELFPAT|SPLIT)\b/i);
     if (firstTagIdx > 0) {
-        text = text.slice(firstTagIdx);
-    }
+    text = text.slice(firstTagIdx);
+}
 
     // 去掉常见分析分割线
     text = text.replace(/\n?---+\n?/g, '\n').trim();
@@ -513,7 +535,7 @@ function processResp(text) {
     var data = getAccData();
     var acc = getCurAcc();
     var charId = curChar ? curChar.id : respondingCharId;
-    if (!charId) return;
+if (!charId) return 0;
     var savedCharId = charId;
     var charData = data.chars.find(function(c) { return c.id === charId; });
     var charName = charData ? charData.displayName : '角色';
@@ -873,8 +895,12 @@ var quoteMatch = text.match(/<QUOTE>([\s\S]*?)<\/QUOTE>/);
         }
     }
 
-        text = text.trim();
-        if (!text) return;
+if (!text) {
+    // 如果原始回复里本来就有标签型消息，说明已经处理过，不需要补“...”
+    if (hadStructuredTag) return 0;
+    appendMsgToChat(savedCharId, { role: 'ai', content: '…', time: Date.now() });
+    return 0;
+}
 
         // 分段发送
         if (D.settings.segment && text.indexOf('<SPLIT>') >= 0) {
@@ -893,7 +919,7 @@ var partQuoteMatch = part.match(/<QUOTE>([\s\S]*?)<\/QUOTE>/);
                 if (partQuoteMatch) {
                     var sq = partQuoteMatch[1].trim();
                     var cms = data.chats[savedCharId] || [];
-                    for (var qi2 = cms.length - 1; qi2 >= 0; qi2--) {
+for (var qi2 = cms.length - 1; qi2 >= 0; qi2--) {
                         var qm = cms[qi2];
                         if (qm.recalled || qm.type === 'sys' || !qm.content) continue;
                         if (qm.content.indexOf(sq) >= 0 || (sq.length >= 3 && qm.content.indexOf(sq.slice(0, 5)) >= 0)) {
@@ -954,7 +980,7 @@ part = part.replace(/<QUOTE>[\s\S]*?<\/QUOTE>/g, '').trim();
                             }
                             appendMsgToChat(cid, msg);
                             if (typeof pushNotify === 'function') {
-                                pushNotify(charName, p.slice(0, 60), { tag: 'chat-' + cid });
+pushNotify(charName, p.slice(0, 60), { tag: 'chat-' + cid + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) });
                             }
                         }, d);
                     })(part, partQuote, partQuoteTime, delay, savedCharId);
@@ -1000,14 +1026,16 @@ text = text.replace(/<QUOTE>[\s\S]*?<\/QUOTE>/g, '');
 if (quoteContent) { msg.quoteContent = quoteContent; msg.quoteTime = quoteTime; }
 appendMsgToChat(savedCharId, msg);
 if (typeof pushNotify === 'function') {
-    pushNotify(charName, text.slice(0, 60), { tag: 'chat-' + savedCharId });
+pushNotify(charName, text.slice(0, 60), { tag: 'chat-' + savedCharId + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) });
 }
         // 检测AI是否说出了自己邮箱
-        if (typeof detectEmailInquiry === 'function') {
+         if (typeof detectEmailInquiry === 'function') {
             detectEmailInquiry(text, charData);
         }
         }
     }
+
+    return (typeof delay !== 'undefined' ? delay : 0) || (typeof delay2 !== 'undefined' ? delay2 : 0) || 0;
 }
 
 function openRegenModal() {
@@ -1026,7 +1054,7 @@ function confirmRegen() {
 function doRegen(customPrompt) {
     closeFunc();
     var charId = curChar ? curChar.id : respondingCharId;
-    if (!charId) return;
+    if (!charId) return 0;
     var data = getAccData();
     var msgs = data.chats[charId] || [];
     for (var i = msgs.length - 1; i >= 0; i--) {
@@ -1064,6 +1092,16 @@ function recognizeImage(imageData, callback) {
 
 function doBgActivity(char, callback) {
     if (!D.api.key) { if (callback) callback(); return; }
+
+    var s = D.settings || {};
+var allowBg = !!s.bgOn;
+
+// 只看总开关 + 角色勾选
+if (!allowBg || !char || char.bgEnabled !== true) {
+        if (callback) callback();
+        return;
+    }
+
     var acc = getCurAcc();
     var data = getAccData();
     var now = Date.now();
@@ -1083,7 +1121,7 @@ function doBgActivity(char, callback) {
     var gapText = lastTime ? fmtDuration(now - lastTime) : '未知';
 
     // 当前时间段
-    var localHour = new Date(now + D.theme.tz * 3600000 - new Date().getTimezoneOffset() * 60000).getHours();
+var localHour = getDateInThemeTz(now).getHours();
     var timePeriod = localHour < 6 ? '凌晨' : localHour < 9 ? '早上' : localHour < 12 ? '上午' :
                      localHour < 14 ? '中午' : localHour < 18 ? '下午' : localHour < 22 ? '晚上' : '深夜';
 
@@ -1146,10 +1184,15 @@ sysPrompt += '【重要】要符合角色性格，不要强行活跃，该安静
     })
     .then(function(r) { return r.json(); })
     .then(function(d) {
-        if (d.error || !d.choices || !d.choices[0]) { if (callback) callback(); return; }
-        processBgResponse(char, d.choices[0].message.content);
-        if (callback) callback();
-    })
+    if (d.error || !d.choices || !d.choices[0]) { if (callback) callback(); return; }
+
+    // 防止请求发出后你又把开关关掉
+    var s2 = D.settings || {};
+    if (!s2.bgOn || !char || char.bgEnabled !== true) { if (callback) callback(); return; }
+
+    processBgResponse(char, d.choices[0].message.content);
+    if (callback) callback();
+})
     .catch(function(e) {
         console.log('后台活动失败', e);
         if (callback) callback();
@@ -1173,83 +1216,106 @@ function shouldSendBgSystemPush(charId) {
 
 function processBgResponse(char, text) {
     if (text.indexOf('<IDLE>') >= 0) return;
-// 处理AI主动发起通话
-var callBgRegex = /<CALL\s+type="(voice|video)">([\s\S]*?)<\/CALL>/;
-var callBgMatch = text.match(callBgRegex);
-if (callBgMatch) {
-    var callType = callBgMatch[1];
-    var callReason = callBgMatch[2].trim();
-    if (typeof aiInitiateCall === 'function') {
-        aiInitiateCall(char.id, callType, callReason);
+
+    var s = (typeof D !== 'undefined' && D.settings) ? D.settings : {};
+    var allowBg = !!s.bgOn;
+    var allowDm = true;
+var allowMoment = true;
+
+    // 处理AI主动发起通话（也受总后台/角色开关约束）
+    var callBgRegex = /<CALL\s+type="(voice|video)">([\s\S]*?)<\/CALL>/;
+    var callBgMatch = text.match(callBgRegex);
+    if (callBgMatch) {
+        var callType = callBgMatch[1];
+        var callReason = callBgMatch[2].trim();
+        if (typeof aiInitiateCall === 'function') {
+            aiInitiateCall(char.id, callType, callReason);
+        }
+        return;
     }
-    return;
-}
     var data = getAccData();
     var acc = getCurAcc();
     var notifications = [];
+if (allowDm) {
     var dmMatches = text.match(/<DM>([\s\S]*?)<\/DM>/g) || [];
     dmMatches.slice(0, 3).forEach(function(dm) {
         var content = dm.replace(/<\/?DM>/g, '').trim();
         if (content) {
             if (!data.chats[char.id]) data.chats[char.id] = [];
-appendMsgToChat(char.id, { role: 'ai', content: content, time: Date.now() });
-notifications.push({ name: char.displayName, avatar: char.avatar, content: content, time: Date.now(), accId: D.currentAccId, charId: char.id });
-if (typeof pushNotify === 'function') {
-    pushNotify(char.displayName || char.realName, content.slice(0, 40), {
-        icon: char.avatar || '',
-        charId: char.id,
-        tag: 'chat-' + char.id
-    });
-}
-if (typeof sendBgPush === 'function' && shouldSendBgSystemPush(char.id)) {
-    sendBgPush({
-        title: char.displayName || char.realName || '新消息',
-        body: content.slice(0, 60),
-        tag: 'chat-' + char.id,
-        icon: char.avatar || '',
-        url: 'https://huios.pages.dev'
-    });
-}
+            appendMsgToChat(char.id, { role: 'ai', content: content, time: Date.now() });
+            notifications.push({ name: char.displayName, avatar: char.avatar, content: content, time: Date.now(), accId: D.currentAccId, charId: char.id });
+            if (typeof pushNotify === 'function') {
+                pushNotify(char.displayName || char.realName, content.slice(0, 40), {
+                    icon: char.avatar || '',
+                    charId: char.id,
+                    tag: 'chat-' + char.id + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+                });
+            }
+            if (typeof sendBgPush === 'function' && shouldSendBgSystemPush(char.id)) {
+                sendBgPush({
+                    title: char.displayName || char.realName || '新消息',
+                    body: content.slice(0, 60),
+                    tag: 'chat-' + char.id + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+                    icon: char.avatar || '',
+                    url: 'https://huios.pages.dev'
+                });
+            }
         }
     });
+}
+if (allowMoment) {
     var momentMatches = text.match(/<MOMENT>([\s\S]*?)<\/MOMENT>/g) || [];
-if (momentMatches.length) {
-    var content = momentMatches[0].replace(/<\/?MOMENT>/g, '').trim();
-    var locMatch = content.match(/<LOC>([\s\S]*?)<\/LOC>/);
-    var location = locMatch ? locMatch[1].trim() : '';
-    content = content.replace(/<LOC>[\s\S]*?<\/LOC>/g, '').trim();
-    if (content) {
-        data.moments.push({ id: genId('mom'), authorId: char.id, authorType: 'ai', content: content, images: [], location: location, visibleGroups: [], likes: [], comments: [], time: Date.now() });
-        notifications.push({ name: char.displayName, avatar: char.avatar, content: '[发了朋友圈] ' + content.slice(0, 20), time: Date.now(), accId: D.currentAccId, charId: char.id });
+    if (momentMatches.length) {
+        var content = momentMatches[0].replace(/<\/?MOMENT>/g, '').trim();
+        var locMatch = content.match(/<LOC>([\s\S]*?)<\/LOC>/);
+        var location = locMatch ? locMatch[1].trim() : '';
+        content = content.replace(/<LOC>[\s\S]*?<\/LOC>/g, '').trim();
+        if (content) {
+            data.moments.push({ id: genId('mom'), authorId: char.id, authorType: 'ai', content: content, images: [], location: location, visibleGroups: [], likes: [], comments: [], time: Date.now() });
+            notifications.push({ name: char.displayName, avatar: char.avatar, content: '[发了朋友圈] ' + content.slice(0, 20), time: Date.now(), accId: D.currentAccId, charId: char.id });
 
-        if (typeof sendBgPush === 'function' && shouldSendBgSystemPush(char.id)) {
-            sendBgPush({
-                title: (char.displayName || char.realName || '角色') + ' 发了新动态',
-                body: content.slice(0, 60),
-                tag: 'moment-' + char.id,
-                icon: char.avatar || '',
-                url: 'https://huios.pages.dev'
-            });
+            if (typeof sendBgPush === 'function' && shouldSendBgSystemPush(char.id)) {
+                sendBgPush({
+                    title: (char.displayName || char.realName || '角色') + ' 发了新动态',
+                    body: content.slice(0, 60),
+                    tag: 'moment-' + char.id + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+                    icon: char.avatar || '',
+                    url: 'https://huios.pages.dev'
+                });
+            }
         }
     }
 }
-    var likeMatches = text.match(/<LIKE>([\s\S]*?)<\/LIKE>/g) || [];
-    likeMatches.forEach(function(like) {
-        var mom = data.moments.find(function(m) { return m.id === like.replace(/<\/?LIKE>/g, '').trim(); });
-        if (mom && mom.likes.indexOf(char.id) < 0) mom.likes.push(char.id);
-    });
-    var commentRegex = /<COMMENT\s+id="([^"]+)">([\s\S]*?)<\/COMMENT>/g;
-    var cm;
-    while ((cm = commentRegex.exec(text)) !== null) {
-        var mom = data.moments.find(function(m) { return m.id === cm[1]; });
-        if (mom && cm[2].trim()) {
-            if (!mom.comments) mom.comments = [];
-            mom.comments.push({ id: genId('cmt'), authorId: char.id, content: cm[2].trim(), time: Date.now() });
+        if (allowMoment) {
+        var likeMatches = text.match(/<LIKE>([\s\S]*?)<\/LIKE>/g) || [];
+        likeMatches.forEach(function(like) {
+            var mom = data.moments.find(function(m) { return m.id === like.replace(/<\/?LIKE>/g, '').trim(); });
+            if (mom && mom.likes.indexOf(char.id) < 0) mom.likes.push(char.id);
+        });
+
+        var commentRegex = /<COMMENT\s+id="([^"]+)">([\s\S]*?)<\/COMMENT>/g;
+        var cm;
+        while ((cm = commentRegex.exec(text)) !== null) {
+            var mom = data.moments.find(function(m) { return m.id === cm[1]; });
+            if (mom && cm[2].trim()) {
+                if (!mom.comments) mom.comments = [];
+                mom.comments.push({ id: genId('cmt'), authorId: char.id, content: cm[2].trim(), time: Date.now() });
+            }
         }
     }
+
     save();
     if (notifications.length) showNotify(notifications);
     if ($('chatPage').classList.contains('active')) renderContacts();
+}
+function normalizeSummaryText(s) {
+    s = String(s || '').trim();
+    // 去掉行首 bullet（-, •, ·, 1. 等）
+    s = s.replace(/^\s*[-•·]\s*/gm, '');
+    s = s.replace(/^\s*\d+[.)、]\s*/gm, '');
+    // 压缩空行
+    s = s.replace(/\n{3,}/g, '\n\n').trim();
+    return s;
 }
 // ========== 记忆总结 ==========
 function doSummaryNow() {
@@ -1280,7 +1346,7 @@ function doSummaryNow() {
         body: JSON.stringify({
             model: api.model,
             messages: [
-                { role: 'system', content: '请将以下对话内容总结为记忆摘要。要求：保留重要事件、情感变化、关键信息；每个要点单独一行，以"-"开头；总字数控制在200字以内；用中文输出；只输出摘要内容，不要任何开头语。' },
+{ role: 'system', content: '请将以下对话内容总结为记忆摘要。要求：保留重要事件、情感变化、关键信息；语言自然连贯；总字数控制在200字以内；用中文输出；只输出摘要内容，不要任何开头语或标题。' },
                 { role: 'user', content: history }
             ],
             temperature: 0.3,
@@ -1290,7 +1356,7 @@ function doSummaryNow() {
     .then(function(r) { return r.json(); })
     .then(function(d) {
         if (d.error) throw new Error(d.error.message);
-        var summary = d.choices[0].message.content.trim();
+var summary = normalizeSummaryText(d.choices[0].message.content);
         if (!data.memories[curChar.id]) data.memories[curChar.id] = [];
         data.memories[curChar.id].push({
             id: genId('mem'),
@@ -1318,23 +1384,21 @@ function autoSummaryIfNeeded(charId) {
         return !m.recalled && m.type !== 'sys' && (m.content || m.imageDesc);
     });
 
-    var interval = Math.max(20, charData.summaryInterval || 20);
+    var interval = Math.max(20, parseInt(charData.summaryInterval, 10) || 20);
+    var lastCount = parseInt(charData.lastSummarizedCount || 0, 10);
+    if (!isFinite(lastCount) || lastCount < 0) lastCount = 0;
+    if (lastCount > allMsgs.length) lastCount = 0;
 
-    // 只在消息数量恰好是interval整数倍时触发
-    if (allMsgs.length === 0 || allMsgs.length % interval !== 0) return;
-
-    // 防止重复总结：检查最后一条记忆是否已经是对这批消息的总结
-    var mems = data.memories[charId] || [];
-    var lastMem = mems[mems.length - 1];
-    if (lastMem && lastMem.auto && (Date.now() - lastMem.time) < 60000) return;
+    // 不再用“整除触发”，改为“累计到 interval 就触发”
+    if (allMsgs.length - lastCount < interval) return;
+    if (charData.summaryRunning) return;
 
     var api = (typeof getApi2 === 'function') ? getApi2() : D.api;
     if (!api || !api.key) api = D.api;
     if (!api.key) return;
 
     var acc = getCurAcc();
-    // 取最近interval条进行总结
-    var targetMsgs = allMsgs.slice(-interval);
+    var targetMsgs = allMsgs.slice(lastCount, lastCount + interval);
     var history = targetMsgs.map(function(m) {
         var name = m.role === 'user' ? (acc ? acc.persona : '用户') : charData.realName;
         var content = m.type === 'image' ? '[图片: ' + (m.imageDesc || '') + ']' :
@@ -1343,13 +1407,16 @@ function autoSummaryIfNeeded(charId) {
         return name + '：' + content;
     }).join('\n');
 
+    charData.summaryRunning = true;
+    save();
+
     fetch(api.url.replace(/\/+$/, '') + '/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + api.key },
         body: JSON.stringify({
             model: api.model,
             messages: [
-                { role: 'system', content: '请将以下对话内容总结为记忆摘要。要求：保留重要事件、情感变化、关键信息；每个要点单独一行，以"-"开头；总字数控制在200字以内；用中文输出；只输出摘要内容，不要任何开头语。' },
+                { role: 'system', content: '请将以下对话内容总结为记忆摘要。要求：保留重要事件、情感变化、关键信息；语言自然连贯；总字数控制在200字以内；用中文输出；只输出摘要内容，不要任何开头语或标题。' },
                 { role: 'user', content: history }
             ],
             temperature: 0.3,
@@ -1359,7 +1426,8 @@ function autoSummaryIfNeeded(charId) {
     .then(function(r) { return r.json(); })
     .then(function(d) {
         if (d.error || !d.choices || !d.choices[0]) return;
-        var summary = d.choices[0].message.content.trim();
+        var summary = normalizeSummaryText(d.choices[0].message.content);
+
         var freshData = getAccData();
         if (!freshData.memories[charId]) freshData.memories[charId] = [];
         freshData.memories[charId].push({
@@ -1368,13 +1436,27 @@ function autoSummaryIfNeeded(charId) {
             time: Date.now(),
             auto: true
         });
+
+        var freshChar = freshData.chars.find(function(c) { return c.id === charId; });
+        if (freshChar) {
+            freshChar.lastSummarizedCount = lastCount + targetMsgs.length;
+        }
+
         save();
-        // 如果记忆页面开着就刷新
+
         if (typeof openMemoryPage === 'function' && $('memoryPage') && $('memoryPage').classList.contains('active')) {
             openMemoryPage();
         }
     })
-    .catch(function() {});
+    .catch(function() {})
+    .finally(function() {
+        var freshData2 = getAccData();
+        var freshChar2 = freshData2.chars.find(function(c) { return c.id === charId; });
+        if (freshChar2) {
+            freshChar2.summaryRunning = false;
+            save();
+        }
+    });
 }
 function checkAutoSummary(charId) {
     var data = getAccData();

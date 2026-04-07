@@ -395,60 +395,24 @@ function recognizeImage(imageData, callback) {
 
 // ========== 后台活动检测 ==========
 function startBgTimer() {
-    if (bgTimer) clearInterval(bgTimer);
-    if (!D.settings.bgOn) return;
-    
-    bgTimer = setInterval(function() {
-        checkBgActivity();
-    }, 30 * 1000);
+    // 前端本地后台活动已停用，统一由服务端 bg cron 执行
+    if (bgTimer) {
+        clearInterval(bgTimer);
+        bgTimer = null;
+    }
+    return;
 }
 
 var bgActivityRunning = false;
 
 function checkBgActivity() {
-    if (bgActivityRunning) return;
-    var data = getAccData();
-    if (!data) return;
-
-    var now = Date.now();
-var interval = (D.settings.bgInterval || 120) * 1000;
-
-    // 找出所有需要触发的角色
-    var candidates = data.chars.filter(function(c) {
-        if (!c.bgEnabled) return false;
-var last = lastInteract[c.id] || 0;
-if (!last) {
-    var msgs = (data.chats[c.id] || []);
-    var lastMsg = msgs[msgs.length - 1];
-    last = lastMsg ? lastMsg.time : 0;
-}
-if (!last) return false;
-        // 距上次互动超过设定时间，且距上次后台活动也超过设定时间
-        var lastBg = c.lastBgTime || 0;
-        return (now - last >= interval) && (now - lastBg >= interval);
-    });
-
-    if (!candidates.length) return;
-
-    bgActivityRunning = true;
-    runBgQueue(candidates, 0, function() {
-        bgActivityRunning = false;
-    });
+    // 前端本地后台活动已停用
+    return;
 }
 
 function runBgQueue(chars, idx, done) {
-    if (idx >= chars.length) { done(); return; }
-    var char = chars[idx];
-    doBgActivity(char, function() {
-        // 更新该角色的上次后台活动时间
-        var data = getAccData();
-        var c = data.chars.find(function(x) { return x.id === char.id; });
-        if (c) { c.lastBgTime = Date.now(); save(); }
-        // 做下一个
-        setTimeout(function() {
-            runBgQueue(chars, idx + 1, done);
-        }, 1000);
-    });
+    // 前端本地后台活动已停用
+    if (typeof done === 'function') done();
 }
 function openHearts() {
     if (!curChar) return;
@@ -603,9 +567,9 @@ openHearts = function() {
         startHeartRateAnimation(last.heartRate);
     }
 };
-const PUSH_API = "https://huios-push-production.up.railway.app";
+const PUSH_API = "https://huios-push.onrender.com";
 
-function sendBgPush(opt) {
+function sendBgPushLegacy(opt) {
     try {
         var userId = getRiskUserId();
         if (!userId) return;
@@ -628,7 +592,7 @@ function sendBgPush(opt) {
         console.warn("sendBgPush 失败:", e);
     }
 }
-function urlBase64ToUint8Array(base64String) {
+function urlBase64ToUint8ArrayLegacy(base64String) {
     var padding = "=".repeat((4 - base64String.length % 4) % 4);
     var base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
     var rawData = atob(base64);
@@ -659,7 +623,7 @@ async function initWebPush() {
         if (!sub) {
             sub = await reg.pushManager.subscribe({
                 userVisibleOnly: true,
-                applicationServerKey: urlBase64ToUint8Array(publicKey)
+                applicationServerKey: urlBase64ToUint8ArrayLegacy(publicKey)
             });
         }
 
@@ -677,3 +641,11 @@ async function initWebPush() {
         console.warn("Web Push 初始化失败:", e);
     }
 }
+var bgTimer = null;
+
+if (!D.settings) D.settings = {};
+if (typeof D.settings.bgOn === 'undefined') D.settings.bgOn = true;
+if (typeof D.settings.bgInterval === 'undefined') D.settings.bgInterval = 120;
+
+// 前端本地后台活动已停用：
+// 统一改由服务端 /bg/sync + runBgCron + /bg/pull 负责

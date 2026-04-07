@@ -13,7 +13,7 @@ self.addEventListener("message", (e) => {
   const options = {
     body: e.data.body || "",
     icon: e.data.icon || "",
-    tag: e.data.tag || "huios-msg",
+tag: e.data.tag || ("msg-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8)),
     data: e.data.data || {}
   };
   e.waitUntil(self.registration.showNotification(title, options));
@@ -32,7 +32,7 @@ self.addEventListener("push", (event) => {
   const options = {
     body: data.body || "",
     icon: data.icon || "",
-    tag: data.tag || "huios-push",
+tag: data.tag || ("push-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8)),
     data: {
       url: data.url || "https://huios.pages.dev"
     }

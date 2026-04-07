@@ -59,6 +59,28 @@ var db = new Dexie('AIChatDB');
 db.version(1).stores({
     appData: 'id'  // 只需要一个表存储所有数据
 });
+function getThemeTzOffsetHours() {
+    var tz = (D && D.theme) ? D.theme.tz : 8;
+    if (typeof tz === 'number' && isFinite(tz)) return tz;
+    if (typeof tz === 'string') {
+        var m = tz.match(/([+-]?\d+(?:\.\d+)?)/);
+        if (m) return parseFloat(m[1]);
+    }
+    return 8;
+}
+
+function getDateInThemeTz(ts) {
+    var base = (typeof ts === 'number') ? ts : Date.now();
+    var d = new Date(base);
+    var utc = d.getTime() + d.getTimezoneOffset() * 60000;
+    return new Date(utc + getThemeTzOffsetHours() * 3600000);
+}
+
+function fmtDateTimeByThemeTz(ts) {
+    var d = getDateInThemeTz(ts);
+    var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
 
 // ========== 保存函数 ==========
 async function save() {

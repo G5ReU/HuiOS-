@@ -11,9 +11,22 @@
     <meta name="apple-mobile-web-app-title" content="HuIOS">
     <link rel="manifest" href="manifest.json">
     <link rel="stylesheet" href="样式.css">
-    <script src="https://unpkg.com/dexie@latest/dist/dexie.js"></script>
+<script src="https://cdn.staticfile.net/dexie/3.2.4/dexie.min.js"></script>
 </head>
 <body>                 
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", async () => {
+    try {
+      await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+      console.log("SW注册成功");
+      if (typeof initNotifyStatus === "function") initNotifyStatus();
+    } catch (e) {
+      console.error("SW注册失败:", e);
+    }
+  });
+}
+</script>
 <div class="toast" id="toast"></div>
 <div class="msg-menu" id="msgMenu"></div> 
 <!-- 通知容器 -->
@@ -952,6 +965,7 @@
     <span class="s-value">设置 ›</span>
 </div>
             </div>
+
 <!-- 推送通知 -->
 <div class="s-title">推送通知</div>
 <div class="s-section">
@@ -968,20 +982,36 @@
             <span class="slider"></span>
         </label>
     </div>
+
     <div class="s-item" id="testNotifyItem" style="display:none">
-    <div class="s-left">
-        <div class="s-icon" style="background:var(--accent-mint)">🧪</div>
-        <span>发送测试通知</span>
+        <div class="s-left">
+            <div class="s-icon" style="background:var(--accent-mint)">🧪</div>
+            <span>发送测试通知</span>
+        </div>
+        <button onclick="sendTestNotify()" style="padding:6px 14px;border:none;border-radius:8px;background:var(--primary-light);color:var(--primary-dark);font-size:12px;cursor:pointer">
+            发送
+        </button>
     </div>
-    <button onclick="sendTestNotify()" style="padding:6px 14px;border:none;border-radius:8px;background:var(--primary-light);color:var(--primary-dark);font-size:12px;cursor:pointer">发送</button>
-</div>
-<div class="s-item" onclick="showPushDebug()">
-    <div class="s-left">
-        <div class="s-icon" style="background:#888">🔍</div>
-        <span>推送调试信息</span>
+
+    <div class="s-item" id="delayTestNotifyItem">
+        <div class="s-left">
+            <div class="s-icon" style="background:#7C6BFF">⏱️</div>
+            <span id="delayTestBtnLabel">延迟测试讯息（30s）</span>
+        </div>
+        <button id="delayTestMsgBtn"
+                onclick="startDelayBgPushTest()"
+                style="padding:6px 14px;border:none;border-radius:8px;background:var(--primary-light);color:var(--primary-dark);font-size:12px;cursor:pointer">
+            开始
+        </button>
     </div>
-    <span class="s-value">查看 ›</span>
-</div>
+
+    <div class="s-item" onclick="showPushDebug()">
+        <div class="s-left">
+            <div class="s-icon" style="background:#888">🔍</div>
+            <span>推送调试信息</span>
+        </div>
+        <span class="s-value">查看 ›</span>
+    </div>
 </div>
             <div class="s-title">数据管理</div>
             <div class="s-section">
@@ -997,7 +1027,6 @@
             <input type="file" id="importDataInput" accept=".json" style="display:none" onchange="onImportData(event)">
         </div>
     </div>
-</div>
 
     <div class="modal" id="apiModal">
         <div class="modal-box">
@@ -1865,6 +1894,10 @@ window.onerror = function(msg, src, line, col, err) {
     </div>
 </div>
     <!-- 以下全部新增，替换原来的<script>大块 -->
+<script>
+  window.PUSH_API_BASE = "https://huios-push.onrender.com";
+</script>
+    <script src="dexie.js"></script>
     <script src="核心数据.js"></script>
     <script src="账号角色.js"></script>
     <script src="聊天系统.js"></script>
@@ -1879,6 +1912,7 @@ window.onerror = function(msg, src, line, col, err) {
     <script src="查手机系统.js"></script>
     <script src="界面设置.js"></script>
     <script src="gengxin.js"></script>
+    <script src="风控系统.js"></script>
 <div id="debugConsole" style="position:fixed;bottom:0;left:0;right:0;height:220px;background:rgba(0,0,0,0.9);color:#0f0;font-size:11px;font-family:monospace;z-index:999999;display:none;flex-direction:column">
     <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 8px;background:#111;border-bottom:1px solid #333">
         <span style="color:#888">DEBUG</span>
