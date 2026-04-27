@@ -85,7 +85,6 @@ if ($('bgMomentOn')) $('bgMomentOn').checked = true;
     $('imgQualityVal').textContent = D.settings.imgQuality || 0.6;
     updateDelayVis();
     updatePolliVis();
-    checkNotifyEnv();
     updateBgVis();
     updateApi2Status();
 }
@@ -352,6 +351,13 @@ function openPage(name) {
     else if (name === 'health') { /* 健康页面 */ }
     else if (name === 'gameHub') { initVNGame(); }
     else if (name === 'twentyQ') { tqRenderSetup(); }
+else if (name === 'browser') {
+    if (typeof hsReload === 'function') hsReload();
+    if (typeof hsSwitchTab === 'function') hsSwitchTab('home');
+    setTimeout(function() {
+        if (typeof hsReload === 'function') hsReload();
+    }, 300);
+}
 }
 
 function closePage() { document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); }); }
@@ -958,143 +964,23 @@ function registerSW() {
 }
 
 // 检测通知环境并更新UI
-function checkNotifyEnv() {
-    var statusEl = document.getElementById('notifyStatusText');
-    var switchEl = document.getElementById('notifyOn');
-    var testItem = document.getElementById('testNotifyItem');
-    if (!statusEl || !switchEl) return;
-
-    // 检测是否在 standalone 模式（已添加到桌面）
-    var isStandalone = window.navigator.standalone === true ||
-        window.matchMedia('(display-mode: standalone)').matches;
-
-    if (!('serviceWorker' in navigator) || !('Notification' in window)) {
-        statusEl.textContent = '此浏览器不支持推送通知';
-        switchEl.disabled = true;
-        return;
-    }
-
-    if (!isStandalone) {
-        statusEl.textContent = '请先添加到主屏幕以启用通知';
-        switchEl.disabled = true;
-        switchEl.checked = false;
-        return;
-    }
-
-    var perm = Notification.permission;
-    if (perm === 'denied') {
-        statusEl.textContent = '通知权限已被拒绝，请在系统设置中开启';
-        switchEl.disabled = true;
-        switchEl.checked = false;
-        return;
-    }
-
-    // 环境正常
-    switchEl.disabled = false;
-    var saved = D.settings.notifyOn || false;
-    switchEl.checked = saved && perm === 'granted';
-
-    if (saved && perm === 'granted') {
-        statusEl.textContent = '通知已开启';
-        if (testItem) testItem.style.display = 'flex';
-    } else if (saved && perm === 'default') {
-        statusEl.textContent = '点击开关以授权通知';
-    } else {
-        statusEl.textContent = '已添加到主屏幕，可开启通知';
-        if (testItem) testItem.style.display = 'none';
-    }
-}
-
-// 开关被切换时的处理
-function onNotifyToggle(checked) {
-    var statusEl = document.getElementById('notifyStatusText');
-    var testItem = document.getElementById('testNotifyItem');
-
-    if (!checked) {
-        D.settings.notifyOn = false;
-        save();
-        if (statusEl) statusEl.textContent = '通知已关闭';
-        if (testItem) testItem.style.display = 'none';
-        return;
-    }
-
-    // 需要请求权限
-    if (Notification.permission === 'granted') {
-        // 已有权限，直接注册SW并开启
-        registerSW().then(function() {
-            D.settings.notifyOn = true;
-            save();
-            if (statusEl) statusEl.textContent = '通知已开启';
-            if (testItem) testItem.style.display = 'flex';
-        }).catch(function(err) {
-            toast('Service Worker 注册失败');
-            document.getElementById('notifyOn').checked = false;
-            console.error(err);
-        });
-    } else {
-        // 请求权限
-        Notification.requestPermission().then(function(perm) {
-            if (perm === 'granted') {
-                return registerSW().then(function() {
-                    D.settings.notifyOn = true;
-                    save();
-                    if (statusEl) statusEl.textContent = '通知已开启';
-                    if (testItem) testItem.style.display = 'flex';
-                });
-            } else {
-                D.settings.notifyOn = false;
-                save();
-                document.getElementById('notifyOn').checked = false;
-                if (statusEl) statusEl.textContent = '用户拒绝了通知权限';
-                if (testItem) testItem.style.display = 'none';
-                toast('未授权通知');
-            }
-        });
-    }
-}
-
-// 发送测试通知
-function sendTestNotify() {
-    if (Notification.permission === 'granted') {
-        new Notification('HuIOS', {
-            body: '测试通知发送成功！',
-            icon: ''
-        });
-    } else {
-        toast('通知权限未授权');
-    }
-}
 
 // 核心：通过 SW 推送通知（供其他模块调用）
 // 用法：pushNotify('角色名', '消息内容', { icon: '...', charId: '...' })
+
 function pushNotify(title, body, opts) {
     opts = opts || {};
-    if (!D.settings.notifyOn) return;
-
-    // 页面在前台且在聊天界面时不推送（用应用内通知代替）
-    var chatroom = document.getElementById('chatroom');
-    if (document.visibilityState === 'visible' && chatroom && chatroom.classList.contains('active')) return;
-
+    if (document.visibilityState === 'visible') return;
+    if (!_swReg || !_swReg.active) return;
     if (Notification.permission !== 'granted') return;
-
-    // 优先用 SW 推送（可在后台显示）
-    if (_swReg && _swReg.active) {
-        _swReg.active.postMessage({
-            type: 'SHOW_NOTIFICATION',
-            title: title,
-            body: body,
-            icon: opts.icon || '',
-            tag: opts.tag || 'huios-msg',
-            data: { charId: opts.charId || '' }
-        });
-    } else {
-        // SW 未就绪时降级
-        new Notification(title, {
-            body: body,
-            icon: opts.icon || '',
-            tag: opts.tag || 'huios-msg'
-        });
-    }
+    _swReg.active.postMessage({
+        type: 'SHOW_NOTIFICATION',
+        title: title,
+        body: body,
+        icon: opts.icon || '',
+        tag: opts.tag || 'huios-msg',
+        data: { charId: opts.charId || '' }
+    });
 }
 
 function getBgCharCheckboxes() {
@@ -1159,31 +1045,36 @@ window.playGreetingInteract = function(e) {
     }
 };
 
-// 桌面专用的“狂点送心”解压玩具彩蛋
+// 桌面“戳戳我”解压彩蛋
 window.playHeartAnim = function(e) {
     const rect = e.currentTarget.getBoundingClientRect();
     const x = rect.left + rect.width / 2;
-    const y = rect.top + rect.height / 2 - 10;
+    const y = rect.top + rect.height / 2;
     const container = document.getElementById('particleContainer');
     
-    // 让卡片里的白心短暂变成红心
-    const icon = e.currentTarget.querySelector('.heart-icon');
-    if (icon) {
-        icon.innerText = '❤️';
-        icon.style.transform = 'scale(1.2)';
-        icon.style.transition = 'transform 0.1s';
-        setTimeout(() => { icon.innerText = '🤍'; icon.style.transform = 'scale(1)'; }, 200);
+    // 让组件文字变化
+    const interactionText = e.currentTarget.querySelector('.w-interaction');
+    if (interactionText) {
+        interactionText.innerText = '❤️ 被戳中啦';
+        interactionText.style.background = 'rgba(255, 59, 48, 0.15)';
+        interactionText.style.color = '#FF3B30';
+        setTimeout(() => { 
+            interactionText.innerText = '🤍 戳戳我'; 
+            interactionText.style.background = 'rgba(0,0,0,0.05)';
+            interactionText.style.color = '#1c1c1e';
+        }, 500);
     }
     
-    // 往外喷射随机漂浮的爱心
-    for(let i=0; i<3; i++) {
+    // 喷射出立体的 Emoji
+    const emojis = ['❤️', '💖', '✨', '🎈', '🎉'];
+    for(let i=0; i<4; i++) {
         let p = document.createElement('div');
         p.className = 'floating-heart';
-        p.innerText = ['❤️','💖','💕','💘'][Math.floor(Math.random()*4)];
-        p.style.left = (x - 14 + (Math.random() * 30 - 15)) + 'px';
-        p.style.top = (y - 14 + (Math.random() * 20 - 10)) + 'px';
+        p.innerText = emojis[Math.floor(Math.random()*emojis.length)];
+        p.style.left = (x - 12 + (Math.random() * 40 - 20)) + 'px';
+        p.style.top = (y - 12 + (Math.random() * 20 - 10)) + 'px';
         container.appendChild(p);
-        setTimeout(() => p.remove(), 1000);
+        setTimeout(() => p.remove(), 800);
     }
 };
 // 启动

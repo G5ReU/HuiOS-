@@ -288,7 +288,14 @@ body {
         .msg-image-placeholder { background: #E8E8E8; padding: 30px 15px; border-radius: 14px; text-align: center; font-size: 12px; color: var(--text-gray); }
         
                 .voice-icon { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
-        .voice-waves { display: flex; gap: 2px; flex: 1; align-items: center; height: 20px; }
+.voice-waves {
+    display: flex;
+    gap: 2px;
+    flex: 1; /* 撑开中间的空间 */
+    align-items: center;
+    height: 20px;
+    min-width: 40px; /* 让波形至少有点长度 */
+}
         .voice-wave { width: 3px; border-radius: 2px; transition: height 0.1s; }
         .msg.user .voice-wave, .msg-with-avatar.user .voice-wave { background: rgba(255,255,255,0.7); }
         .msg.ai .voice-wave, .msg-with-avatar.ai .voice-wave { background: var(--primary); opacity: 0.7; }
@@ -728,7 +735,7 @@ body {
 .map-random-btn:active {
     transform: scale(0.98);
 }
-/* ===== 钱包/转账 ===== */
+/* ===== 钱包/转账页面地基（被你不小心删掉的） ===== */
 .full-page {
     position: fixed;
     top: 0; left: 0; right: 0; bottom: 0;
@@ -736,6 +743,9 @@ body {
     z-index: 2000;
     display: none;
     flex-direction: column;
+    /* 底部安全区 */
+    padding-bottom: env(safe-area-inset-bottom);
+    box-sizing: border-box;
 }
 .full-page.active {
     display: flex;
@@ -744,9 +754,21 @@ body {
     display: flex;
     align-items: center;
     padding: 12px 16px;
+    /* 让顶部白条延伸上去覆盖刘海，解决难看的问题 */
+    padding-top: calc(12px + env(safe-area-inset-top));
     background: white;
     border-bottom: 1px solid #eee;
     flex-shrink: 0;
+}
+
+/* 弹窗强制置顶，解决不显示的问题 */
+#rechargeModal,
+#transferDetailModal {
+    z-index: 9999 !important; 
+}
+#rechargeModal .modal-box,
+#transferDetailModal .modal-box {
+    z-index: 10000 !important; 
 }
 .full-page-title {
     flex: 1;
@@ -765,14 +787,6 @@ body {
 }
 .wallet-key:active {
     background: #f0f0f0;
-}
-#rechargeModal,
-#transferDetailModal {
-    z-index: 2100;
-}
-#rechargeModal .modal-box,
-#transferDetailModal .modal-box {
-    z-index: 2101;
 }
 .msg-time-label {
     text-align: center;
@@ -3413,7 +3427,8 @@ body {
     flex-direction: row;
     align-items: center;
     gap: 8px;
-    width: fit-content;
+    width: fit-content !important; /* 保证点开文字后，气泡不会跟着变长 */
+    min-width: 140px; /* 给一个合适的初始长度，不再缩成一团 */
     max-width: 75%;
     padding: 10px 14px;
     cursor: pointer;
@@ -3509,156 +3524,8 @@ body {
 .msg-with-avatar.ai .voice-dur {
     color: var(--text-gray);
 }
-/* ===== 关系条（轻量胶囊，不抢聊天区） ===== */
-.relation-bar{
-  display:flex;
-  gap:8px;
-  padding:6px 10px 8px;
-  background:rgba(255,255,255,.72);
-  backdrop-filter: blur(8px);
-  border-bottom:1px solid rgba(0,0,0,.05);
+.messages .msg-bubble,
+.messages .msg-with-avatar .msg-bubble-wrap .msg-bubble {
+  white-space: pre-wrap !important;
+  word-break: break-word;
 }
-.relation-item{
-  flex:1;
-  display:flex;
-  align-items:center;
-  gap:6px;
-  font-size:10px;
-  color:var(--text-gray);
-}
-.relation-track{
-  flex:1;
-  height:5px;
-  background:#ececf1;
-  border-radius:999px;
-  overflow:hidden;
-}
-.relation-fill{height:100%;width:50%;background:linear-gradient(90deg,#ffb7c8,#ff8cab)}
-.relation-fill.trust{background:linear-gradient(90deg,#9fd0ff,#6aaefc)}
-.relation-fill.mood{background:linear-gradient(90deg,#a8e7c0,#66cc92)}
-.relation-item b{
-  min-width:24px;
-  text-align:right;
-  font-size:10px;
-  color:#666;
-}
-
-/* ===== 聊天约定提示 ===== */
-.task-hint{
-  margin:6px 10px 0;
-  padding:7px 10px;
-  border-radius:10px;
-  background:#fff;
-  border:1px solid #f0e8ff;
-  color:#7a5fa0;
-  font-size:12px;
-  box-shadow: 0 1px 6px rgba(0,0,0,.04);
-}
-
-/* ===== 首页今日约定/时间线卡片 ===== */
-.task-widget,.timeline-widget{
-  background:rgba(255,255,255,.86);
-  border:1px solid rgba(255,255,255,.55);
-}
-.task-widget .widget-content,
-.timeline-widget .widget-content{
-  min-height:48px;
-}
-.widget-task-item{
-  font-size:11px;
-  color:var(--text-dark);
-  padding:4px 0;
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
-}
-.widget-task-item::before{
-  content:'•';
-  color:var(--primary);
-  margin-right:6px;
-}
-
-/* ===== 今日约定页 (iOS 高级卡片风) ===== */
-.task-card {
-  display: flex;
-  background: #ffffff;
-  border-radius: 18px;
-  padding: 16px;
-  margin-bottom: 14px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.05);
-  border: 1px solid rgba(0,0,0,0.03);
-  gap: 14px;
-  transition: transform 0.2s;
-}
-.task-card:active { transform: scale(0.98); }
-
-.task-status-icon {
-  width: 24px; height: 24px;
-  border-radius: 50%;
-  border: 2px solid var(--primary);
-  display: flex; align-items: center; justify-content: center;
-  color: var(--primary);
-  font-size: 14px; font-weight: bold;
-  flex-shrink: 0; margin-top: 2px;
-}
-.task-card.done .task-status-icon { background: var(--accent-mint); border-color: var(--accent-mint); color: white; }
-.task-card.canceled .task-status-icon { border-color: #ddd; color: transparent; }
-
-.task-main { flex: 1; min-width: 0; }
-.task-title { font-size: 16px; font-weight: 600; color: #1c1c1e; margin-bottom: 6px; }
-.task-card.done .task-title { text-decoration: line-through; color: #8e8e93; }
-.task-card.canceled .task-title { color: #8e8e93; }
-
-.task-meta { font-size: 11px; color: #8e8e93; margin-bottom: 10px; display: flex; align-items: center; gap: 4px; }
-.task-meta::before { content: '🕒'; }
-
-.task-desc {
-  font-size: 13px; color: #3a3a3c;
-  background: #f2f2f7; padding: 10px 12px;
-  border-radius: 12px; margin-bottom: 12px; line-height: 1.4;
-}
-
-.task-actions { display: flex; gap: 10px; }
-.task-btn-icon {
-  flex: 1; padding: 10px 0; border: none; border-radius: 12px;
-  font-size: 14px; font-weight: 600; cursor: pointer;
-  transition: background 0.2s;
-}
-.task-btn-icon.ok { background: rgba(52, 199, 89, 0.15); color: #34C759; }
-.task-btn-icon.ok:active { background: rgba(52, 199, 89, 0.25); }
-.task-btn-icon.cancel { background: #f2f2f7; color: #8e8e93; }
-.task-btn-icon.cancel:active { background: #e5e5ea; }
-
-/* ===== 时间线页 ===== */
-.timeline-wrap { padding: 10px 4px; }
-.timeline-day-group { margin-bottom: 24px; }
-.timeline-date-label {
-  font-size: 14px; font-weight: 600; color: var(--text-dark);
-  margin-bottom: 12px; padding-left: 14px; position: relative;
-}
-.timeline-date-label::before {
-  content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
-  width: 4px; height: 14px; background: var(--primary); border-radius: 4px;
-}
-.timeline-node { position: relative; padding-left: 28px; padding-bottom: 16px; }
-.timeline-node:last-child { padding-bottom: 0; }
-.tl-line {
-  position: absolute; left: 11px; top: 24px; bottom: -8px;
-  width: 2px; background: #f0f0f0;
-}
-.timeline-node:last-child .tl-line { display: none; }
-.tl-dot {
-  position: absolute; left: 6px; top: 8px;
-  width: 12px; height: 12px; border-radius: 50%;
-  background: #ccc; border: 2px solid white; box-shadow: 0 0 0 1px #eee;
-}
-.tl-type-relation .tl-dot { background: #FF69B4; box-shadow: 0 0 0 1px #FFB6C1; }
-.tl-type-task .tl-dot { background: #FFB347; box-shadow: 0 0 0 1px #FFE066; }
-.tl-type-memory .tl-dot { background: #A8D8EA; box-shadow: 0 0 0 1px #E8F4F8; }
-.tl-type-sys .tl-dot { background: var(--primary); box-shadow: 0 0 0 1px var(--primary-light); }
-.tl-content {
-  background: white; border-radius: 14px; padding: 12px 14px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.04); border: 1px solid rgba(0,0,0,0.03);
-}
-.tl-time { font-size: 11px; color: var(--text-light); margin-bottom: 6px; }
-.tl-text { font-size: 13px; color: var(--text-dark); line-height: 1.5; }

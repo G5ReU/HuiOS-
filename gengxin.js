@@ -323,52 +323,87 @@ async function syncBgDataToServer() {
   try {
     if (typeof getAccData !== "function") {
       console.warn("[bgSync] skip: getAccData not ready");
-      return;
+      return null;
     }
 
     const data = getAccData();
     if (!data) {
       console.warn("[bgSync] skip: accData empty");
-      return;
+      return null;
     }
 
-const payload = {
-      userId: getBgUserId(),
-      chars: (data.chars || []).map(c => ({
-        ...c,
-        bgEnabled: c && c.bgEnabled === true
-      })),
-      chats: data.chats || {},
-      settings: (typeof D !== "undefined" && D.settings) ? D.settings : {},
-      api: (typeof D !== "undefined" && D.api) ? D.api : {},
+    var trimmedChats = {};
+    try {
+      var chatObj = data.chats || {};
+      var chatKeys = Object.keys(chatObj);
+      for (var i = 0; i < chatKeys.length; i++) {
+        var cid = chatKeys[i];
+        var arr = chatObj[cid];
+        trimmedChats[cid] = Array.isArray(arr) ? arr.slice(-20) : [];
+      }
+    } catch (chatErr) {
+      console.warn("[bgSync] trimChats error:", chatErr);
+      trimmedChats = {};
+    }
+
+    var userId = getBgUserId();
+    var settings = {};
+    var api = {};
+    try {
+      if (typeof D !== "undefined") {
+        settings = D.settings || {};
+        api = D.api || {};
+      }
+    } catch (e) {}
+
+    var payload = {
+      userId: userId,
+      chars: (data.chars || []).map(function(c) {
+        return {
+          id: c.id,
+          realName: c.realName || "",
+          displayName: c.displayName || "",
+          persona: c.persona || "",
+          avatar: c.avatar || "",
+          bgEnabled: c && c.bgEnabled === true
+        };
+      }),
+      chats: trimmedChats,
+      settings: settings,
+      api: api,
       lastInteract: getBgLastInteractSafe(),
-      lastBgTime: getBgLastBgTimeMap(data.chars || [])
     };
 
-console.log("[bgSync] sending", {
-  userId: payload.userId,
-  chars: payload.chars.length,
-  chatKeys: Object.keys(payload.chats || {}).length,
-  hasApiKey: !!(payload.api && payload.api.key),
-  model: (payload.api && payload.api.model) ? payload.api.model : ""
-});
+    console.log("[bgSync] sending", {
+      userId: payload.userId,
+      chars: payload.chars.length,
+      chatKeys: Object.keys(payload.chats).length,
+      hasApiKey: !!(payload.api && payload.api.key),
+      model: (payload.api && payload.api.model) ? payload.api.model : "",
+      bgOn: !!(payload.settings && payload.settings.bgOn),
+      bgInterval: payload.settings.bgInterval
+    });
 
-    const res = await fetch(`${getBgBaseUrl()}/bg/sync`, {
+    var bodyStr = JSON.stringify(payload);
+    console.log("[bgSync] payload size:", bodyStr.length);
+
+    var res = await fetch(getBgBaseUrl() + "/bg/sync", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      keepalive: true
+      body: bodyStr
     });
 
     if (!res.ok) {
-      throw new Error(`bg/sync 失败: ${res.status}`);
+      var errTxt = await res.text().catch(function() { return ""; });
+      console.warn("[bgSync] server error:", res.status, errTxt);
+      throw new Error("bg/sync fail: " + res.status);
     }
 
-    const j = await res.json().catch(() => ({}));
+    var j = await res.json().catch(function() { return {}; });
     console.log("[bgSync] ok:", j);
     return j;
   } catch (e) {
-    console.warn("[bgSync] failed:", e);
+    console.warn("[bgSync] failed:", e && e.message ? e.message : e);
     return null;
   }
 }
@@ -495,31 +530,67 @@ function initBgSyncAndPull() {
   });
 }
 async function showPushDebug() {
-  const lines = [];
-  lines.push("ServiceWorker: " + ("serviceWorker" in navigator));
-  lines.push("PushManager: " + ("PushManager" in window));
-lines.push("Notification支持: " + ("Notification" in window));
-lines.push("Notification权限: " + (("Notification" in window) ? Notification.permission : "unsupported"));
+  var lines = [];
+  lines.push("=== 推送基础 ===");
   lines.push("userId: " + getPushUserId());
-  lines.push("用户想开启推送: " + (getPushWanted() ? "是" : "否"));
-  lines.push("订阅是否已上报: " + (getPushUploaded() ? "是" : "否"));
+  lines.push("推送开关: " + (getPushWanted() ? "是" : "否"));
+
+  // 只发一个请求，不再同步
+  lines.push("");
+  lines.push("=== 后台推送状态 ===");
+  lines.push("正在查询...");
+
+  // 先弹出基础信息
+  var uid = getPushUserId();
 
   try {
-    const sub = await getLocalSubscription();
-    lines.push("本地订阅: " + (sub ? "有" : "无"));
-  } catch (e) {
-    lines.push("本地订阅检测失败: " + e.message);
-  }
+    var debugRes = await fetch(PUSH_API_BASE + "/bg/debug-status?userId=" + encodeURIComponent(uid), { cache: "no-store" }).then(function(r) { return r.json(); });
 
-  try {
-    const data = await fetch(`${PUSH_API_BASE}/subscriptions?userId=${encodeURIComponent(getPushUserId())}`).then(r => r.json());
-    lines.push("服务器订阅数: " + data.filtered);
-  } catch (e) {
-    lines.push("服务器查询失败: " + e.message);
-  }
+    var lines2 = [];
+    lines2.push("=== 推送基础 ===");
+    lines2.push("userId: " + uid);
+    lines2.push("推送开关: " + (getPushWanted() ? "是" : "否"));
+    lines2.push("");
+    lines2.push("=== 后台推送状态 ===");
 
-  alert(lines.join("\n"));
+    if (!debugRes || !debugRes.ok) {
+      lines2.push("获取失败");
+    } else if (!debugRes.exists) {
+      lines2.push("服务端无数据（未同步成功）");
+    } else {
+      lines2.push("后台开关: " + (debugRes.bgOn ? "开✅" : "关❌"));
+      lines2.push("设定间隔: " + debugRes.intervalSec + "秒");
+
+      var chars = debugRes.chars || [];
+      if (chars.length === 0) {
+        lines2.push("无角色数据");
+      }
+      for (var i = 0; i < chars.length; i++) {
+        var c = chars[i];
+        lines2.push("");
+        lines2.push("【" + (c.name || c.charId) + "】");
+        lines2.push("  后台启用: " + (c.bgEnabled ? "是✅" : "否❌"));
+
+        if (c.reason === "user bgOff") {
+          lines2.push("  状态: 用户后台关闭");
+        } else if (c.reason === "char bgDisabled") {
+          lines2.push("  状态: 该角色未启用后台");
+        } else if (c.reason === "no lastChat") {
+          lines2.push("  状态: 无聊天记录");
+        } else if (c.ready) {
+          lines2.push("  状态: 就绪 🟢");
+        } else {
+          lines2.push("  剩余: " + c.remainingSec + "秒");
+          lines2.push("  原因: " + (c.reason === "waiting lastChat" ? "距上次聊天太近" : "距上次后台生成太近"));
+        }
+      }
+    }
+    alert(lines2.join("\n"));
+  } catch (e) {
+    alert("查询失败: " + e.message);
+  }
 }
+
 async function ensureSwRegistered() {
   if (!("serviceWorker" in navigator)) {
     throw new Error("当前浏览器不支持 Service Worker");

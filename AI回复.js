@@ -28,7 +28,8 @@ function buildSysPrompt() {
     var wbContent = getWbContent(charData);
     if (wbContent) p += '【世界观设定】\n' + wbContent + '\n\n';
 // 注入近期通话摘要
-var callMemCount = charData.callMemoryCount !== undefined ? charData.callMemoryCount : 3;
+var slim = getPromptSlimOpts(charData);
+var callMemCount = slim.callMemCount;
 if (callMemCount > 0) {
     var callLogs = (data.callLogs || []).filter(function(l) { return l.charId === charId; });
     var recentLogs = callLogs.slice(-callMemCount);
@@ -106,25 +107,49 @@ if (D.settings.timeAware) {
         if (_maxGap > 5 * 60 * 1000) {
             p += '历史最长沉默：' + fmtDuration(_maxGap) + '（' + _maxGapDesc + '）\n';
         }
+        // ===== 强提醒：距上次消息太久 =====
+        var _lastGap = _now - _last.time;
+        if (_lastGap > 24 * 60 * 60 * 1000) {
+            var _gapDays = Math.floor(_lastGap / (24*60*60*1000));
+            p += '\n⚠️【重要：你们已经' + _gapDays + '天没聊了！】\n';
+            p += '你必须意识到时间已经过去很久了。之前聊的话题（比如点外卖、约见面、要做某事等）如果没有后续，就已经过期作废了。\n';
+            p += '不要继续之前未完成的话题，除非用户主动提起。像真人一样，隔了这么久再聊，应该先打个新的招呼或关心一下对方。\n\n';
+        } else if (_lastGap > 4 * 60 * 60 * 1000) {
+            var _gapHours = Math.floor(_lastGap / (60*60*1000));
+            p += '\n⚠️【注意：距上次聊天已过' + _gapHours + '小时】\n';
+            p += '之前的话题（如果有未完成的事）可能已不再有效，不要强行续接，除非用户主动提起。\n\n';
+        } else if (_lastGap > 30 * 60 * 1000) {
+            p += '\n💡 距上次聊天已过' + Math.floor(_lastGap / (60*1000)) + '分钟，注意话题可能已切换。\n\n';
+        }
+
         p += '\n';
     }
-    if (D.settings.segment) {
-        p += '【发消息方式】\n像真人发微信一样，一句话一条消息，用<SPLIT>分开。\n例：嗯嗯<SPLIT>那你现在在干嘛<SPLIT>我刚吃完饭\n每条5-25字左右，自然分段。\n\n';
+        if (D.settings.segment) {
+        p += '【微信聊天习惯】\n你正在拿着手机和用户聊微信。像真人一样，一句话发一条消息，使用<SPLIT>来模拟连发多条消息。\n例：你在干嘛呀<SPLIT>我刚吃完饭\n不要每一条都长篇大论，长短句结合。\n\n';
+    } else {
+        p += '【微信聊天习惯】\n你正在拿着手机和用户聊微信，回复长度适中，符合现代人打字习惯，绝对不要有机器人的说教感。\n\n';
     }
-    p += '【特殊功能】\n';
-    p += '- 关系变化：<relation intimacy="+1" trust="+1" mood="+2" reason="原因">\n';
-    p += '- 创建约定：<task create title="约定名称" desc="详细描述" rewardIntimacy="2">\n';
-    p += '- 更新记忆：<memory upsert scope="profile" key="属性名" value="内容">\n';
-    p += '- 语音消息：<VOICE>内容</VOICE>\n';
-p += '- 内心与状态（每轮必须）：<HEART>内心想法</HEART><STATE>状态描述</STATE><RATE>数字</RATE>（心率，40-180之间的纯数字）\n';
-p += '  注意：闭合标签必须有斜杠，如</HEART>，不能写成<HEART>。\n';
-    p += '- 拍一拍用户：<PAT>\n';
-    p += '- 拍一拍自己：<SELFPAT>\n';
-  p += '- 引用：<QUOTE>原话</QUOTE>回复内容\n';
-p += '  引用规则：①只引用用户说的话；②原话必须是对方消息里真实存在的原文，不能改写；③只在你的回复和那句话直接相关时才引用，像真人聊天一样，有感而发才引用，不要为了引用而引用；④同一句话不要引用两次。\n';
-    p += '- 撤回：<RECALL>内容</RECALL>\n';
-    p += '- 主动给用户打电话：<CALL type="voice">打电话原因</CALL> 或 <CALL type="video">原因</CALL>\n';
-if (D.settings.polliOn) p += '- 发图片：<IMAGE>必须使用英文提示词</IMAGE><DESC>中文描述</DESC>\n示例：<IMAGE>a cute girl sitting by the window, soft light, anime style</IMAGE><DESC>一个坐在窗边的可爱女孩</DESC>\n';
+
+    p += '【特殊互动功能】\n';
+    p += '- 发语音：<VOICE>你想发成语音的话</VOICE>\n';
+    p += '- 拍一拍用户：<PAT> / 拍自己：<SELFPAT> / 撤回打错的话：<RECALL>要撤回的字</RECALL>\n';
+    p += '- 主动打电话：<CALL type="voice">打电话的理由</CALL> 或 <CALL type="video">打视频的理由</CALL>\n';
+    if (D.settings.polliOn) {
+        p += '- 发手机照片：<IMAGE>英文画面提示词</IMAGE><DESC>中文描述</DESC>\n';
+    }
+
+    p += '- 引用回复（强烈建议多用，增加活人感）：<QUOTE>用户真实的原文片段</QUOTE>你的针对性回复\n';
+    p += '  【⚠️引用的高级技巧（极其重要，请彻底打破固定格式）】：\n';
+    p += '  1. 像真人一样，当你想要抓把柄、调侃、划重点、共情对方的某个词，或者逐条回应时，请大胆使用引用！\n';
+    p += '  2. 严禁每次都在第一句话的开头引用！你可以极其灵活地把 <QUOTE> 穿插在句中、句末，甚至配合 <SPLIT> 进行多重引用。\n';
+    p += '  3. 示例1 (穿插在句中)：你可拉倒吧<SPLIT>刚才谁信誓旦旦说<QUOTE>绝对不吃</QUOTE>的？现在又饿了？\n';
+    p += '  4. 示例2 (结尾反问)：我其实还好啦，倒是你，<QUOTE>今天累死了</QUOTE>是真的假的啊？\n';
+    p += '  5. 示例3 (多重/逐条回应)：<QUOTE>第一件事</QUOTE>没问题<SPLIT>至于<QUOTE>第二件事</QUOTE>我还要再想想。\n';
+    p += '  6. 注意：<QUOTE>内的原话必须是对方刚才发过的真实原文（截取几个字或半句话即可），严禁你自己篡改或扩写。\n';
+
+    p += '\n【心理与状态追踪】（每轮回复的最后【必须】附带）\n';
+    p += '格式：<HEART>当前内心最真实的os/碎碎念</HEART><STATE>当前的动作神态/微表情</STATE><RATE>当前心率(40-180纯数字)</RATE>\n';
+    p += '注意：标签必须写对闭合斜杠，如</HEART>。\n';
     p += '\n【朋友圈功能】\n';
 p += '发朋友圈：<MOMENT><IMG>必须使用英文图片提示词</IMG><LOC>地点</LOC>文字内容</MOMENT>\n';
     p += '点赞：<LIKE>id</LIKE>  评论：<COMMENT id="id">内容</COMMENT>  删除：<DEL_MOMENT>id</DEL_MOMENT>\n';
@@ -177,35 +202,35 @@ if (_charEmail) {
     var _allEmails = data.emails || [];
     var _toChar = _allEmails.filter(function(e) {
         return e.folder === 'sent' && e.to === _charEmail;
-    }).slice(-5);
+}).slice(-slim.emailCount);
     var _fromChar = _allEmails.filter(function(e) {
         return e.folder === 'inbox' && e.from === _charEmail;
-    }).slice(-5);
+}).slice(-slim.emailCount);
     var _combined = _toChar.concat(_fromChar).sort(function(a, b) { return a.time - b.time; });
     if (_combined.length) {
         p += '【邮件往来记录】\n';
         _combined.forEach(function(e) {
             var dir = e.from === _charEmail ? '你发给用户' : '用户发给你';
-            p += dir + '\n主题：' + e.subject + '\n内容：' + e.body.slice(0, 200) + '\n\n';
+p += '内容：' + e.body.slice(0, slim.emailBodyMax) + '\n\n';
         });
     } else {
         p += '暂无邮件往来。\n';
     }
     p += '如需给用户发邮件，格式：<EMAIL subject="主题">正文</EMAIL>\n';
 }
-    p += getMomentsForAI(charData);
+p += getMomentsForAI(charData, slim.momentsCount);
     var stickersInfo = typeof getStickersForAI === 'function' ? getStickersForAI(charId) : '';
     if (stickersInfo) p += stickersInfo;
-    p += '【输出要求】不要把分析过程、推理过程、思考草稿、英文解释、INTERNAL STATE 直接输出给用户；只输出最终角色内容与需要的系统标签。\n\n';
+    p += '【最终输出要求】你就是角色本人，千万不要出戏！绝对不要输出任何分析推理过程、思考草稿、场景旁白（场景动作请放到<STATE>里），也不要把生成图片的英文提示词发给用户看。直接输出你作为真人发给用户的微信消息以及隐藏的系统标签即可。\n\n';
     return p;
 }
 
-function getMomentsForAI(charData) {
+function getMomentsForAI(charData, limit) {
     var data = getAccData();
     var acc = getCurAcc();
     if (!data || !acc) return '';
     var visibleMoments = data.moments.filter(function(m) { return canSeeMoment(m, charData.id); });
-    var recentMoments = visibleMoments.slice(-15);
+var recentMoments = visibleMoments.slice(-(limit || 8));
     if (!recentMoments.length) return '';
     var info = '【最近朋友圈】只能基于以下内容互动，禁止编造：\n';
     recentMoments.forEach(function(m) {
@@ -315,6 +340,22 @@ if (_data && _data.chars) {
     var memCount = charData ? charData.memoryCount || 20 : 20;
     var history = (data.chats[charId] || []).filter(function(m) { return m.type !== 'sys' && !m.recalled; }).slice(-memCount);
     history.forEach(function(m, i) {
+        // ===== 时间跳跃标记：两条消息间隔超过30分钟就插入时间分隔 =====
+        if (i > 0 && m.time && history[i-1].time) {
+            var gap = m.time - history[i-1].time;
+            if (gap > 30 * 60 * 1000) {
+                var gapLabel = '';
+                if (gap > 24 * 60 * 60 * 1000) {
+                    gapLabel = '⏰ 【过了' + Math.floor(gap / (24*60*60*1000)) + '天】以下是新的对话，之前的话题可能已经过时，请勿继续之前未完成的事。';
+                } else if (gap > 60 * 60 * 1000) {
+                    gapLabel = '⏰ 【过了' + Math.floor(gap / (60*60*1000)) + '小时】话题可能已切换。';
+                } else {
+                    gapLabel = '⏰ 【过了' + Math.floor(gap / (60*1000)) + '分钟】';
+                }
+                msgs.push({ role: 'system', content: gapLabel });
+            }
+        }
+
         var role = m.role === 'user' ? 'user' : 'assistant';
         var content = m.content || '';
         if (m.type === 'location') {
@@ -508,534 +549,168 @@ function finishResp() {
     }, 2000);
 }
 
-function processResp(text) {
+function cleanAiTextHead(s) {
+    s = String(s || '');
+    // 去零宽字符
+    s = s.replace(/[\u200B-\u200D\uFEFF]/g, '');
+    // 只删开头的逗号/顿号/句号（不动换行、不动感叹号）
+    s = s.replace(/^[ \t]*[，,、。.]+[ \t]*/, '');
+    // 不要 trim，保留换行
+    return s;
+}
+
+function normalizeInlineTags(text) {
     text = String(text || '');
 
-// 记录原始文本里是否有“结构化标签消息”（语音/图片/朋友圈/邮件/转账等）
-var hadStructuredTag = /<(VOICE|MOMENT|LIKE|COMMENT|DEL_MOMENT|ADDPLACE|MOVETO|SHARELOC|INVITE|TRANSFER|TRANSFER_ACCEPT|TRANSFER_REJECT|EMAIL|CALL|STICKER|IMAGE|RECALL|PAT|SELFPAT|relation|task|memory)\b/i.test(text);
+    // ===== QUOTE 修复 =====
+    // 方括号变尖括号
+    text = text.replace(/\[QUOTE\]/gi, '<QUOTE>')
+               .replace(/\[\/QUOTE\]/gi, '</QUOTE>')
+               .replace(/< QUOTE >/gi, '<QUOTE>')
+               .replace(/< \/QUOTE >/gi, '</QUOTE>');
 
-    // 去掉 INTERNAL STATE 以及后续分析
-    text = text.replace(/`?INTERNAL STATE`?[\s\S]*$/i, '').trim();
-    // 【新增：拦截并执行 AI 的约定、关系、记忆标签】
-    if (typeof applyTagsFromText === 'function') {
-        text = applyTagsFromText(text, { charId: savedCharId });
+    // AI漏写斜杠：<QUOTE>纯文本<QUOTE> → 加闭合
+    // [^<]* 绝不会跨越已正确闭合的 </QUOTE>
+    text = text.replace(/<QUOTE>([^<]*)<QUOTE>/gi, '<QUOTE>$1</QUOTE>');
+
+    // 裸 QUOTE 兜底（完全没写闭合标签）
+    // 前瞻里加了 <\/QUOTE>，避免把已闭合的也重复处理
+    text = text.replace(
+        /<QUOTE>([^<]{1,120})(?=\s*(<\/QUOTE>|<SPLIT>|<PAT>|\|\|\|PAT\|\|\||<IMAGE>|<QUOTE>|$))/gi,
+        function(full, inner, after) {
+            // 如果后面已经是 </QUOTE>，不重复闭合
+            if (after === '</QUOTE>') return full;
+            return '<QUOTE>' + inner + '</QUOTE>';
+        }
+    );
+
+    // ===== IMAGE/DESC 修复 =====
+    text = text.replace(/\[IMAGE\]/gi, '<IMAGE>')
+               .replace(/\[\/IMAGE\]/gi, '</IMAGE>')
+               .replace(/\[DESC\]/gi, '<DESC>')
+               .replace(/\[\/DESC\]/gi, '</DESC>');
+
+    // AI漏写斜杠
+    text = text.replace(/<IMAGE>([^<]*)<IMAGE>/gi, '<IMAGE>$1</IMAGE>');
+    text = text.replace(/<DESC>([^<]*)<DESC>/gi, '<DESC>$1</DESC>');
+
+    // 裸 IMAGE 自动闭合
+    text = text.replace(
+        /<IMAGE>([^<]{1,800})(?=\s*(<\/IMAGE>|<SPLIT>|<QUOTE>|<PAT>|\|\|\|PAT\|\|\||<IMAGE>|<DESC>|$))/gi,
+        function(full, inner, after) {
+            if (after === '</IMAGE>') return full;
+            return '<IMAGE>' + inner + '</IMAGE>';
+        }
+    );
+
+    // 裸 DESC 自动闭合
+    text = text.replace(
+        /<DESC>([^<]{1,300})(?=\s*(<\/DESC>|<SPLIT>|<QUOTE>|<PAT>|\|\|\|PAT\|\|\||<IMAGE>|$))/gi,
+        function(full, inner, after) {
+            if (after === '</DESC>') return full;
+            return '<DESC>' + inner + '</DESC>';
+        }
+    );
+
+    return text;
+}
+function resolveQuoteMeta(searchText, chatMsgs) {
+    searchText = String(searchText || '').trim();
+    if (!searchText) return null;
+
+    function norm(s) {
+        return String(s || '')
+            .replace(/\s+/g, '')
+            .replace(/[，。！？、,.!?'"“”‘’:：;；（）()\[\]【】\-—]/g, '')
+            .toLowerCase();
     }
 
-    // 如果前面混进了英文分析，只保留第一个合法标签开始后的内容
-    var firstTagIdx = text.search(/<(HEART|STATE|RATE|VOICE|MOMENT|LIKE|COMMENT|RECALL|IMAGE|DESC|QUOTE|STICKER|EMAIL|TRANSFER|PAT|SELFPAT|SPLIT)\b/i);
-    if (firstTagIdx > 0) {
-    text = text.slice(firstTagIdx);
+    var key = norm(searchText);
+
+    for (var i = chatMsgs.length - 1; i >= 0; i--) {
+        var m = chatMsgs[i];
+        if (!m || m.recalled || m.type === 'sys' || m.role !== 'user' || !m.content) continue;
+
+        var c = String(m.content);
+        var cn = norm(c);
+
+        if (
+            c.indexOf(searchText) >= 0 ||
+            (searchText.length >= 3 && c.indexOf(searchText.slice(0, 5)) >= 0) ||
+            (key && cn.indexOf(key) >= 0) ||
+            (key && key.length >= 4 && cn.indexOf(key.slice(0, 4)) >= 0)
+        ) {
+            return {
+                quoteTime: m.time || 0,
+                quoteContent: m.type === 'image' ? '[图片]' : m.type === 'voice' ? '[语音]' : c.slice(0, 50)
+            };
+        }
+    }
+
+    // 兜底：匹配不到也展示引用文本（避免“后面几次不显示”）
+return {
+    quoteTime: Date.now(),
+    quoteContent: searchText.slice(0, 50)
+};
 }
 
-    // 去掉常见分析分割线
-    text = text.replace(/\n?---+\n?/g, '\n').trim();
+function splitPromptDesc(prompt, desc) {
+    prompt = String(prompt || '').trim();
+    desc = String(desc || '').trim();
 
-    // 如果出现明显的英文分析前缀，也尽量清掉
-    text = text.replace(/^(analysis|reasoning|thought process|internal monologue|draft)\s*:\s*/i, '').trim();
-    var data = getAccData();
-    var acc = getCurAcc();
-    var charId = curChar ? curChar.id : respondingCharId;
-if (!charId) return 0;
-    var savedCharId = charId;
-    var charData = data.chars.find(function(c) { return c.id === charId; });
-    var charName = charData ? charData.displayName : '角色';
-
-// 修复 AI 漏写闭合斜杠的情况，如 <HEART>...</HEART> 写成 <HEART>...</HEART>
-// 第一步：统一 SPLIT 变体
-text = text.replace(/<SPL-IT>/gi, '<SPLIT>')
-           .replace(/<SPL IT>/gi, '<SPLIT>')
-           .replace(/\[SPLIT\]/gi, '<SPLIT>')
-           .replace(/< SPLIT >/gi, '<SPLIT>')
-           .replace(/<\/SPLIT>/gi, '<SPLIT>');
-
-// 第二步：修复 HEART/STATE/RATE 无闭合标签情况
-// 模式：<HEART>内容<STATE>内容<RATE>数字  → 全部加上闭合
-text = text.replace(
-    /<HEART>([\s\S]*?)<STATE>([\s\S]*?)<RATE>([^\d<]*)(\d+)([^\d<]*?)(?:<\/RATE>)?([\s\S]*?)(?=<[A-Z]|$)/i,
-    function(m, h, s, pre, r, post) {
-        return '<HEART>' + h + '</HEART><STATE>' + s + '</STATE><RATE>' + r + '</RATE>';
-    }
-);
-// 兜底：<HEART>内容 后面没有任何标签
-text = text.replace(/<HEART>([^<]{1,200})(?!\s*<\/HEART>)(?=\s*<STATE>|\s*$)/gi, '<HEART>$1</HEART>');
-text = text.replace(/<STATE>([^<]{1,200})(?!\s*<\/STATE>)(?=\s*<RATE>|\s*$)/gi, '<STATE>$1</STATE>');
-text = text.replace(/<RATE>([^<]{0,10}\d+[^<]{0,10})(?!\s*<\/RATE>)/gi, '<RATE>$1</RATE>');
-
-// 第三步：把 <TAG>内容<TAG> 修复为 <TAG>内容</TAG>（其他标签）
-var _selfCloseTags = ['HEART', 'STATE', 'RATE', 'VOICE', 'MOMENT', 'LIKE', 'COMMENT', 'RECALL', 'IMAGE', 'DESC', 'QUOTE', 'STICKER'];
-_selfCloseTags.forEach(function(tag) {
-    var re1 = new RegExp('<' + tag + '>([\\s\\S]*?)<' + tag + '>', 'gi');
-    text = text.replace(re1, '<' + tag + '>$1</' + tag + '>');
-    var re2 = new RegExp('<\\/' + tag + '>([\\s\\S]*?)<\\/' + tag + '>', 'gi');
-    text = text.replace(re2, '$1</' + tag + '>');
-});
-// 提前读取心声数据，必须在删除之前
-var heartMatch = text.match(/<HEART>([\s\S]*?)(?:<\/HEART>|<STATE>|$)/i);
-var stateMatch = text.match(/<STATE>([\s\S]*?)(?:<\/STATE>|<RATE>|$)/i);
-var rateMatch = text.match(/<RATE>[^\d]*(\d+)/i);
-if (heartMatch || stateMatch || rateMatch) {
-    if (data.hearts[charId]) {
-        data.hearts[charId].push({
-            text: heartMatch ? heartMatch[1].trim() : '',
-            state: stateMatch ? stateMatch[1].trim() : '',
-            heartRate: rateMatch ? Math.min(180, Math.max(40, parseInt(rateMatch[1]))) : 72,
-            time: Date.now()
-        });
-        save();
-    }
-}
-// 第四步：兜底清除所有残留的 <HEART> <STATE> <RATE> 及内容（不管什么格式都删掉）
-text = text.replace(/<HEART>[\s\S]*?<\/HEART>/gi, '');
-text = text.replace(/<STATE>[\s\S]*?<\/STATE>/gi, '');
-text = text.replace(/<RATE>[\s\S]*?<\/RATE>/gi, '');
-// 真正兜底：如果上面都没匹配到，还有裸标签就直接删
-text = text.replace(/<\/?HEART[^>]*>/gi, '');
-text = text.replace(/<\/?STATE[^>]*>/gi, '');
-text = text.replace(/<\/?RATE[^>]*>/gi, '');
-
-    // 阻止撤回长消息
-    var recallCheck = text.match(/<RECALL>([\s\S]*?)<\/RECALL>/);
-    if (recallCheck && recallCheck[1].length > 50) {
-        text = text.replace(/<RECALL>([\s\S]*?)<\/RECALL>/g, '$1');
-    }
-
-    // 拍一拍
-    text = text.replace(/<PAT>/g, '|||PAT|||');
-    var selfPatCount = (text.match(/<SELFPAT>/g) || []).length;
-    for (var sp = 0; sp < Math.min(selfPatCount, 3); sp++) {
-        appendMsgToChat(savedCharId, { role: 'sys', type: 'sys', content: charName + ' 拍了拍自己', time: Date.now() });
-    }
-    text = text.replace(/<SELFPAT>/g, '');
-
-    // 撤回
-    var recallMatch = text.match(/<RECALL>([\s\S]*?)<\/RECALL>/);
-    if (recallMatch && recallMatch[1].trim().length <= 50) {
-        appendMsgToChat(savedCharId, { role: 'ai', content: recallMatch[1].trim(), time: Date.now(), recalled: true, recalledContent: recallMatch[1].trim() });
-    }
-    text = text.replace(/<RECALL>[\s\S]*?<\/RECALL>/g, '');
-
-    // 朋友圈发布
-    var momentMatches = text.match(/<MOMENT>([\s\S]*?)<\/MOMENT>/g) || [];
-    momentMatches.forEach(function(mom) {
-        var content = mom.replace(/<\/?MOMENT>/g, '').trim();
-        var images = [];
-        var imgMatches = content.match(/<IMG>([\s\S]*?)<\/IMG>/g) || [];
-if (imgMatches.length && D.settings.polliOn) {
-    imgMatches.slice(0, 9).forEach(function(img) {
-        var prompt = img.replace(/<\/?IMG>/g, '').trim();
-        var imgUrl = 'https://gen.pollinations.ai/image/' + encodeURIComponent(prompt) + '?model=' + D.settings.polliModel + '&seed=' + Math.floor(Math.random() * 9999) + '&nologo=true';
-        if (D.settings.polliKey) imgUrl += '&key=' + encodeURIComponent(D.settings.polliKey);
-        images.push({ url: imgUrl, desc: prompt });
-    });
-}
-            content = content.replace(/<IMG>[\s\S]*?<\/IMG>/g, '').trim();
-
-        var locMatch = content.match(/<LOC>([\s\S]*?)<\/LOC>/);
-        var location = locMatch ? locMatch[1].trim() : '';
-        content = content.replace(/<LOC>[\s\S]*?<\/LOC>/g, '').trim();
-        if (content || images.length) {
-            data.moments.push({ id: genId('mom'), authorId: charId, authorType: 'ai', content: content, images: images, location: location, visibleGroups: [], likes: [], comments: [], time: Date.now() });
-            save();
-            appendMsg({ role: 'sys', type: 'sys', content: charName + ' 发了一条朋友圈', time: Date.now() });
-        }
-    });
-    text = text.replace(/<MOMENT>[\s\S]*?<\/MOMENT>/g, '');
-
-    // 朋友圈点赞
-    var likeMatches = text.match(/<LIKE>([\s\S]*?)<\/LIKE>/g) || [];
-    likeMatches.forEach(function(like) {
-        var momId = like.replace(/<\/?LIKE>/g, '').trim();
-        var mom = data.moments.find(function(m) { return m.id === momId; });
-        if (mom && mom.likes.indexOf(charId) < 0) {
-            mom.likes.push(charId);
-            save();
-            if (mom.authorType === 'user') appendMsg({ role: 'sys', type: 'sys', content: charName + ' 赞了你的朋友圈', time: Date.now() });
-        }
-    });
-    text = text.replace(/<LIKE>[\s\S]*?<\/LIKE>/g, '');
-
-    // 朋友圈评论
-    var commentRegex = /<COMMENT\s+id="([^"]+)">([\s\S]*?)<\/COMMENT>/g;
-    var cm;
-    while ((cm = commentRegex.exec(text)) !== null) {
-        var mom = data.moments.find(function(m) { return m.id === cm[1]; });
-        if (mom && cm[2].trim()) {
-            if (!mom.comments) mom.comments = [];
-            mom.comments.push({ id: genId('cmt'), authorId: charId, content: cm[2].trim(), time: Date.now() });
-            save();
-            if (mom.authorType === 'user') appendMsg({ role: 'sys', type: 'sys', content: charName + ' 评论了你的朋友圈', time: Date.now() });
-        }
-    }
-    text = text.replace(/<COMMENT\s+id="[^"]+">[\s\S]*?<\/COMMENT>/g, '');
-
-    // 删除朋友圈
-    var delMatches = text.match(/<DEL_MOMENT>([\s\S]*?)<\/DEL_MOMENT>/g) || [];
-    delMatches.forEach(function(del) {
-        var momId = del.replace(/<\/?DEL_MOMENT>/g, '').trim();
-        var idx = data.moments.findIndex(function(m) { return m.id === momId && m.authorId === charId; });
-        if (idx >= 0) { data.moments.splice(idx, 1); save(); appendMsg({ role: 'sys', type: 'sys', content: charName + ' 删除了一条朋友圈', time: Date.now() }); }
-    });
-    text = text.replace(/<DEL_MOMENT>[\s\S]*?<\/DEL_MOMENT>/g, '');
-
-    // 地图功能
-    if (typeof getMapForChar === 'function') {
-        var addPlaceMatches = text.match(/<ADDPLACE>([\s\S]*?)<\/ADDPLACE>/g) || [];
-        addPlaceMatches.forEach(function(ap) {
-            try {
-                var placeData = JSON.parse(ap.replace(/<\/?ADDPLACE>/g, '').trim());
-                var map = getMapForChar(savedCharId);
-                if (map && placeData.name && !map.places.some(function(p) { return p.name === placeData.name; })) {
-                    map.places.push({ id: genId('place'), name: placeData.name, type: placeData.type || 'other', desc: placeData.desc || '', x: Math.round(50 + Math.random() * 300), y: Math.round(50 + Math.random() * 300), addedAt: Date.now() });
-                    save();
-                    appendMsgToChat(savedCharId, { role: 'sys', type: 'sys', content: charName + ' 标记了新地点：' + placeData.name, time: Date.now() });
-                }
-            } catch(e) {}
-        });
-        text = text.replace(/<ADDPLACE>[\s\S]*?<\/ADDPLACE>/g, '');
-
-        var moveMatches = text.match(/<MOVETO>([\s\S]*?)<\/MOVETO>/g) || [];
-        moveMatches.forEach(function(mv) {
-            var placeName = mv.replace(/<\/?MOVETO>/g, '').trim();
-            var map = getMapForChar(savedCharId);
-            if (map && map.places) {
-                var place = map.places.find(function(p) { return p.name.indexOf(placeName) >= 0 || placeName.indexOf(p.name) >= 0; });
-                if (place) {
-                    var d2 = getAccData();
-                    if (!d2.charLocations) d2.charLocations = {};
-                    d2.charLocations[savedCharId] = { placeId: place.id, mapId: map.id, time: Date.now() };
-                    save();
-                }
-            }
-        });
-        text = text.replace(/<MOVETO>[\s\S]*?<\/MOVETO>/g, '');
-
-        var shareMatches = text.match(/<SHARELOC>([\s\S]*?)<\/SHARELOC>/g) || [];
-        shareMatches.forEach(function(sl) {
-            var msg2 = sl.replace(/<\/?SHARELOC>/g, '').trim();
-            var d2 = getAccData();
-            var loc = d2.charLocations ? d2.charLocations[savedCharId] : null;
-            if (loc && D.maps) {
-                var map = D.maps.list.find(function(m) { return m.id === loc.mapId; });
-                var place = map && map.places.find(function(p) { return p.id === loc.placeId; });
-                if (place) appendMsgToChat(savedCharId, { role: 'ai', type: 'location', placeName: place.name, placeType: place.type, mapId: map.id, mapName: map.name, placeId: place.id, content: msg2, time: Date.now() });
-            }
-        });
-        text = text.replace(/<SHARELOC>[\s\S]*?<\/SHARELOC>/g, '');
-
-        var inviteRegex = /<INVITE\s+place="([^"]+)">([\s\S]*?)<\/INVITE>/g;
-        var inv;
-        while ((inv = inviteRegex.exec(text)) !== null) {
-            var map = getMapForChar(savedCharId);
-            if (map && map.places) {
-                var place = map.places.find(function(p) { return p.name.indexOf(inv[1]) >= 0; });
-                if (place) appendMsgToChat(savedCharId, { role: 'ai', type: 'invite', placeName: place.name, placeType: place.type, placeId: place.id, mapId: map.id, content: inv[2].trim(), time: Date.now() });
-            }
-        }
-        text = text.replace(/<INVITE\s+place="[^"]+">[^<]*<\/INVITE>/g, '');
-    }
-
-    // AI转账给用户
-    var aiTransferRegex = /<TRANSFER\s+id="([^"]+)"\s+amount="([^"]+)">([\s\S]*?)<\/TRANSFER>/g;
-    var atm;
-    while ((atm = aiTransferRegex.exec(text)) !== null) {
-        processAITransfer(atm[1], atm[2], atm[3].trim());
-    }
-    text = text.replace(/<TRANSFER\s+id="[^"]+"\s+amount="[^"]+">[\s\S]*?<\/TRANSFER>/g, '');
-
-    // AI确认/拒收转账
-    var acceptRegex = /<TRANSFER_ACCEPT\s+id="([^"]+)">([\s\S]*?)<\/TRANSFER_ACCEPT>/g;
-    var rejectRegex = /<TRANSFER_REJECT\s+id="([^"]+)">([\s\S]*?)<\/TRANSFER_REJECT>/g;
-    var tam;
-    while ((tam = acceptRegex.exec(text)) !== null) {
-    updateTransferStatus(tam[1], 'accepted');
-    var origMsg = findMsgById(tam[1]);
-    if (origMsg) {
-        appendMsgToChat(savedCharId, {
-            id: genId('transfer'),
-            role: 'ai',
-            type: 'transfer',
-            transferDir: 'in',
-            amount: origMsg.amount,
-            remark: origMsg.remark || '',
-            status: 'accepted',
-            time: Date.now()
-        });
-    }
-}
-text = text.replace(/<TRANSFER_ACCEPT\s+id="[^"]+">[\s\S]*?<\/TRANSFER_ACCEPT>/g, '');
-while ((tam = rejectRegex.exec(text)) !== null) {
-    updateTransferStatus(tam[1], 'rejected');
-    var origMsg2 = findMsgById(tam[1]);
-    if (origMsg2) {
-        var rjWallet = getWallet();
-        rjWallet.balance = Math.round((rjWallet.balance + origMsg2.amount) * 100) / 100;
-        saveWallet();
-        addBill('transfer_in', origMsg2.amount, '转账退回', '');
-        refreshWalletPreview();
-        appendMsgToChat(savedCharId, {
-            id: genId('transfer'),
-            role: 'ai',
-            type: 'transfer',
-            transferDir: 'in',
-            amount: origMsg2.amount,
-            remark: '转账退回',
-            status: 'rejected',
-            time: Date.now()
-        });
-    }
-}
-text = text.replace(/<TRANSFER_REJECT\s+id="[^"]+">[\s\S]*?<\/TRANSFER_REJECT>/g, '');
-
-    // AI主动发邮件
-    var emailMatches = text.match(/<EMAIL\s+subject="([^"]*)">([\s\S]*?)<\/EMAIL>/g) || [];
-    emailMatches.forEach(function(em) {
-        var emMatch = em.match(/<EMAIL\s+subject="([^"]*)">([\s\S]*?)<\/EMAIL>/);
-        if (!emMatch) return;
-        var subject = emMatch[1];
-        var body = emMatch[2].trim();
-        var charEmailFrom = charData ? (charData.emailAddress || charData.email) : null;
-        if (!charEmailFrom) return;
-        var newEmail = {
-            id: 'email_' + genId(),
-            from: charEmailFrom,
-            to: getUserEmail(),
-            subject: subject,
-            body: body,
-            time: Date.now(),
-            read: false,
-            starred: false,
-            folder: 'inbox',
-            replyTo: null,
-            isProactive: true
-        };
-        data.emails = data.emails || [];
-        data.emails.push(newEmail);
-        save();
-        if (typeof showNotify === 'function') {
-            showNotify([{
-                name: charData.displayName || charData.realName,
-                avatar: charData.avatar,
-                content: '📧 ' + subject,
-                time: Date.now(),
-                accId: D.currentAccId,
-                type: 'email'
-            }]);
-        }
-        if (typeof pushNotify === 'function') {
-            pushNotify(charData.displayName || charData.realName, '📧 ' + subject, {
-                icon: charData.avatar || '',
-                charId: savedCharId,
-                tag: 'email-' + savedCharId
-            });
-        }
-        if (typeof updateEmailBadge === 'function') updateEmailBadge();
-        appendMsgToChat(savedCharId, { role: 'sys', type: 'sys', content: charName + ' 给你发了一封邮件：' + subject, time: Date.now() });
-    });
-    text = text.replace(/<EMAIL\s+subject="[^"]*">[\s\S]*?<\/EMAIL>/g, '');
-
-    // 聊天中发起通话
-    var chatCallMatch = text.match(/<CALL\s+type="(voice|video)">([\s\S]*?)<\/CALL>/);
-    if (chatCallMatch) {
-        var chatCallType = chatCallMatch[1];
-        var chatCallReason = chatCallMatch[2].trim();
-        text = text.replace(/<CALL\s+type="(voice|video)">[\s\S]*?<\/CALL>/g, '');
-        if (typeof aiInitiateCall === 'function') {
-            setTimeout(function() {
-                aiInitiateCall(savedCharId, chatCallType, chatCallReason);
-            }, 500);
+    // 如果没给DESC，且prompt里混了中文：从第一个中文处分割
+    if (!desc) {
+        var m = prompt.match(/[\u4e00-\u9fa5]/);
+        if (m && m.index > 8) {
+            desc = prompt.slice(m.index).trim();
+            prompt = prompt.slice(0, m.index).trim();
         }
     }
 
-    // 语音消息
-    var voiceMatches = text.match(/<VOICE>([\s\S]*?)<\/VOICE>/g) || [];
-    voiceMatches.forEach(function(v) {
-        var vc = v.replace(/<\/?VOICE>/g, '').trim();
-        if (vc) appendMsgToChat(savedCharId, { role: 'ai', type: 'voice', content: vc, duration: Math.ceil(vc.length / 5), time: Date.now() });
-    });
-    text = text.replace(/<VOICE>[\s\S]*?<\/VOICE>/g, '');
+    // prompt 兜底长度
+    if (prompt.length > 600) prompt = prompt.slice(0, 600).trim();
 
-    // 表情包
-    var stickerMatches = text.match(/<STICKER>([\s\S]*?)<\/STICKER>/g) || [];
-    stickerMatches.forEach(function(stk) {
-        var desc = stk.replace(/<\/?STICKER>/g, '').trim();
-        if (desc) {
-            var matched = data.stickers ? data.stickers.find(function(s) { return s.desc === desc || s.desc.indexOf(desc) >= 0 || desc.indexOf(s.desc) >= 0; }) : null;
-            if (matched) appendMsgToChat(savedCharId, { role: 'ai', type: 'sticker', stickerUrl: matched.url, stickerDesc: matched.desc, time: Date.now() });
-        }
-    });
-    text = text.replace(/<STICKER>[\s\S]*?<\/STICKER>/g, '');
-
-    // 图片生成
-    var imgMatch = text.match(/<IMAGE>([\s\S]*?)<\/IMAGE>/);
-    var descMatch = text.match(/<DESC>([\s\S]*?)<\/DESC>/);
-    if (imgMatch && D.settings.polliOn) {
-        var prompt = imgMatch[1].trim();
-        var desc = descMatch ? descMatch[1].trim() : '';
-        var imgUrl = 'https://gen.pollinations.ai/image/' + encodeURIComponent(prompt) + '?model=' + D.settings.polliModel + '&seed=' + Math.floor(Math.random() * 9999) + '&nologo=true';
-        if (D.settings.polliKey) imgUrl += '&key=' + encodeURIComponent(D.settings.polliKey);
-        appendMsgToChat(savedCharId, { role: 'ai', type: 'image', imageUrl: imgUrl, imageDesc: desc, time: Date.now() });
-        text = text.replace(/<IMAGE>[\s\S]*?<\/IMAGE>/g, '').replace(/<DESC>[\s\S]*?<\/DESC>/g, '');
-    }
-
-    // 引用处理
-var quoteMatch = text.match(/<QUOTE>([\s\S]*?)<\/QUOTE>/);
-    var quoteContent = '';
-    var quoteTime = 0;
-    if (quoteMatch) {
-        var searchText = quoteMatch[1].trim();
-        var chatMsgs = data.chats[savedCharId] || [];
-        for (var qi = chatMsgs.length - 1; qi >= 0; qi--) {
-            var qMsg = chatMsgs[qi];
-            if (qMsg.recalled || qMsg.type === 'sys' || !qMsg.content) continue;
-            if (qMsg.content.indexOf(searchText) >= 0 || (searchText.length >= 3 && qMsg.content.indexOf(searchText.slice(0, 5)) >= 0)) {
-                quoteTime = qMsg.time;
-                quoteContent = qMsg.type === 'image' ? '[图片]' : qMsg.type === 'voice' ? '[语音]' : qMsg.content.slice(0, 50);
-                break;
-            }
-        }
-    }
-
-if (!text) {
-    // 如果原始回复里本来就有标签型消息，说明已经处理过，不需要补“...”
-    if (hadStructuredTag) return 0;
-    appendMsgToChat(savedCharId, { role: 'ai', content: '…', time: Date.now() });
-    return 0;
+    return { prompt: prompt, desc: desc };
 }
 
-        // 分段发送
-        if (D.settings.segment && text.indexOf('<SPLIT>') >= 0) {
-            var parts = text.split('<SPLIT>').filter(function(p) { return p.trim(); });
-            var delay = 0;
-            var usedFirstQuote = false;
-
-            parts.forEach(function(part, partIndex) {
-                part = part.trim();
-                if (!part) return;
-
-                var partQuote = '';
-                var partQuoteTime = 0;
-var partQuoteMatch = part.match(/<QUOTE>([\s\S]*?)<\/QUOTE>/);
-
-                if (partQuoteMatch) {
-                    var sq = partQuoteMatch[1].trim();
-                    var cms = data.chats[savedCharId] || [];
-for (var qi2 = cms.length - 1; qi2 >= 0; qi2--) {
-                        var qm = cms[qi2];
-                        if (qm.recalled || qm.type === 'sys' || !qm.content) continue;
-                        if (qm.content.indexOf(sq) >= 0 || (sq.length >= 3 && qm.content.indexOf(sq.slice(0, 5)) >= 0)) {
-                            partQuoteTime = qm.time;
-                            partQuote = qm.type === 'image' ? '[图片]' : qm.type === 'voice' ? '[语音]' : qm.content.slice(0, 50);
-                            break;
-                        }
-                    }
-part = part.replace(/<QUOTE>[\s\S]*?<\/QUOTE>/g, '').trim();
-                    if (partQuote) usedFirstQuote = true;
-                } else if (!usedFirstQuote && quoteContent && partIndex === 0) {
-                    partQuote = quoteContent;
-                    partQuoteTime = quoteTime;
-                    usedFirstQuote = true;
-                }
-
-                if (!part) return;
-
-                if (part.indexOf('|||PAT|||') >= 0) {
-                    var subs = part.split('|||PAT|||');
-                    subs.forEach(function(sub, j) {
-                        var s2 = sub.trim();
-                        if (s2) {
-                            (function(p, q, qt, d, cid) {
-                                setTimeout(function() {
-                                    var msg = { role: 'ai', content: p, time: Date.now() };
-                                    if (q) {
-                                        msg.quoteContent = q;
-                                        msg.quoteTime = qt;
-                                    }
-                                    appendMsgToChat(cid, msg);
-                                }, d);
-                            })(s2, j === 0 ? partQuote : '', partQuoteTime, delay, savedCharId);
-                            delay += 300 + Math.min(s2.length * 25, 600);
-                        }
-
-                        if (j < subs.length - 1) {
-                            (function(d, cid) {
-                                setTimeout(function() {
-                                    appendMsgToChat(cid, {
-                                        role: 'sys',
-                                        type: 'sys',
-                                        content: charName + ' 拍了拍 ' + (acc ? acc.nick : '你'),
-                                        time: Date.now()
-                                    });
-                                }, d);
-                            })(delay, savedCharId);
-                            delay += 300;
-                        }
-                    });
-                } else {
-                    (function(p, q, qt, d, cid) {
-                        setTimeout(function() {
-                            var msg = { role: 'ai', content: p, time: Date.now() };
-                            if (q) {
-                                msg.quoteContent = q;
-                                msg.quoteTime = qt;
-                            }
-                            appendMsgToChat(cid, msg);
-                            if (typeof pushNotify === 'function') {
-pushNotify(charName, p.slice(0, 60), { tag: 'chat-' + cid + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) });
-                            }
-                        }, d);
-                    })(part, partQuote, partQuoteTime, delay, savedCharId);
-                    delay += 300 + Math.min(part.length * 25, 600);
-                }
-            });
-
-            if (typeof detectEmailInquiry === 'function') {
-                detectEmailInquiry(text, charData);
-            }
-        } else {
-text = text.replace(/<QUOTE>[\s\S]*?<\/QUOTE>/g, '');
-        if (text.indexOf('|||PAT|||') >= 0) {
-            var subs2 = text.split('|||PAT|||');
-            var delay2 = 0;
-            subs2.forEach(function(sub, i) {
-                var s2 = sub.trim();
-                if (s2) {
-                    (function(p, q, qt, d, cid) {
-                        setTimeout(function() {
-                            var msg = { role: 'ai', content: p, time: Date.now() };
-                            if (q) { msg.quoteContent = q; msg.quoteTime = qt; }
-                            appendMsgToChat(cid, msg);
-                        }, d);
-                    })(s2, i === 0 ? quoteContent : '', quoteTime, delay2, savedCharId);
-                    delay2 += 300;
-                }
-                if (i < subs2.length - 1) {
-                    (function(d, cid) {
-                        setTimeout(function() {
-                            appendMsgToChat(cid, { role: 'sys', type: 'sys', content: charName + ' 拍了拍 ' + (acc ? acc.nick : '你'), time: Date.now() });
-                        }, d);
-                    })(delay2, savedCharId);
-                    delay2 += 300;
-                }
-                       });
-
-            if (typeof detectEmailInquiry === 'function') {
-                detectEmailInquiry(text, charData);
-            }
-        } else {
-               var msg = { role: 'ai', content: text, time: Date.now() };
-if (quoteContent) { msg.quoteContent = quoteContent; msg.quoteTime = quoteTime; }
-appendMsgToChat(savedCharId, msg);
-if (typeof pushNotify === 'function') {
-pushNotify(charName, text.slice(0, 60), { tag: 'chat-' + savedCharId + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) });
+function buildImageUrlByPrompt(prompt) {
+    var url = 'https://gen.pollinations.ai/image/' + encodeURIComponent(prompt) +
+        '?model=' + D.settings.polliModel + '&seed=' + Math.floor(Math.random() * 9999) + '&nologo=true';
+    if (D.settings.polliKey) url += '&key=' + encodeURIComponent(D.settings.polliKey);
+    return url;
 }
-        // 检测AI是否说出了自己邮箱
-         if (typeof detectEmailInquiry === 'function') {
-            detectEmailInquiry(text, charData);
-        }
-        }
-    }
 
-    return (typeof delay !== 'undefined' ? delay : 0) || (typeof delay2 !== 'undefined' ? delay2 : 0) || 0;
+// ===== Parser Debug =====
+function isParserDebugOn() {
+    return !!(D && D.settings && D.settings.debugParser);
+}
+function pLog(stage, payload) {
+    if (!isParserDebugOn()) return;
+    try { console.log('[AIParser][' + stage + ']', payload || ''); } catch (e) {}
+}
+function pWarn(stage, payload) {
+    if (!isParserDebugOn()) return;
+    try { console.warn('[AIParser][' + stage + ']', payload || ''); } catch (e) {}
+}
+function countTags(text) {
+    var tags = ['QUOTE','IMAGE','DESC','VOICE','MOMENT','LIKE','COMMENT','RECALL','PAT','SELFPAT','TRANSFER','EMAIL','CALL','SPLIT'];
+    var out = {};
+    text = String(text || '');
+    tags.forEach(function(t) {
+        var m = text.match(new RegExp('<' + t + '\\b', 'gi'));
+        out[t] = m ? m.length : 0;
+    });
+    return out;
+}
+
+function getPromptSlimOpts(charData) {
+    var s = D.settings || {};
+    return {
+        callMemCount: Math.max(0, parseInt(s.promptCallMemCount || (charData && charData.callMemoryCount !== undefined ? charData.callMemoryCount : 3), 10) || 3),
+        momentsCount: Math.max(5, parseInt(s.promptMomentsCount || 8, 10) || 8),
+        emailCount: Math.max(2, parseInt(s.promptEmailCount || 3, 10) || 3),
+        emailBodyMax: Math.max(60, parseInt(s.promptEmailBodyMax || 120, 10) || 120)
+    };
 }
 
 function openRegenModal() {
@@ -1091,6 +766,9 @@ function recognizeImage(imageData, callback) {
 }
 
 function doBgActivity(char, callback) {
+    // 后台活动已由服务端 bgCron 处理，前端不再执行
+    if (callback) callback(); return;
+
     if (!D.api.key) { if (callback) callback(); return; }
 
     var s = D.settings || {};
@@ -1465,4 +1143,496 @@ function checkAutoSummary(charId) {
     setTimeout(function() {
         if (typeof autoSummaryIfNeeded === 'function') autoSummaryIfNeeded(charId);
     }, 500);
+}
+function prepareRespText(rawText) {
+    var text = String(rawText || '');
+    var hadStructuredTag = /<(VOICE|MOMENT|LIKE|COMMENT|DEL_MOMENT|ADDPLACE|MOVETO|SHARELOC|INVITE|TRANSFER|TRANSFER_ACCEPT|TRANSFER_REJECT|EMAIL|CALL|STICKER|IMAGE|RECALL|PAT|SELFPAT|relation|task|memory)\b/i.test(text);
+
+    text = text.replace(/`?INTERNAL STATE`?[\s\S]*$/i, '').trim();
+var firstTagIdx = text.search(/<(VOICE|MOMENT|LIKE|COMMENT|RECALL|IMAGE|DESC|QUOTE|STICKER|EMAIL|TRANSFER|PAT|SELFPAT)\b/i);
+    if (firstTagIdx > 0) text = text.slice(firstTagIdx);
+    text = text.replace(/\n?---+\n?/g, '\n').trim();
+    text = text.replace(/^(analysis|reasoning|thought process|internal monologue|draft)\s*:\s*/i, '').trim();
+
+    return { text: text, hadStructuredTag: hadStructuredTag };
+}
+
+function handleHeartStateRate(text, data, charId) {
+    text = text.replace(/<SPL-IT>/gi, '<SPLIT>')
+               .replace(/<SPL IT>/gi, '<SPLIT>')
+               .replace(/\[SPLIT\]/gi, '<SPLIT>')
+               .replace(/< SPLIT >/gi, '<SPLIT>')
+               .replace(/<\/SPLIT>/gi, '<SPLIT>');
+
+    text = text.replace(
+        /<HEART>([\s\S]*?)<STATE>([\s\S]*?)<RATE>([^\d<]*)(\d+)([^\d<]*?)(?:<\/RATE>)?([\s\S]*?)(?=<[A-Z]|$)/i,
+        function(m, h, s, pre, r, post) {
+            return '<HEART>' + h + '</HEART><STATE>' + s + '</STATE><RATE>' + r + '</RATE>';
+        }
+    );
+    text = text.replace(/<HEART>([^<]{1,200})(?!\s*<\/HEART>)(?=\s*<STATE>|\s*$)/gi, '<HEART>$1</HEART>');
+    text = text.replace(/<STATE>([^<]{1,200})(?!\s*<\/STATE>)(?=\s*<RATE>|\s*$)/gi, '<STATE>$1</STATE>');
+    text = text.replace(/<RATE>([^<]{0,10}\d+[^<]{0,10})(?!\s*<\/RATE>)/gi, '<RATE>$1</RATE>');
+
+    var _selfCloseTags = ['HEART', 'STATE', 'RATE', 'VOICE', 'MOMENT', 'LIKE', 'COMMENT', 'RECALL', 'IMAGE', 'DESC', 'QUOTE', 'STICKER'];
+    _selfCloseTags.forEach(function(tag) {
+        var re1 = new RegExp('<' + tag + '>([^<]*)<' + tag + '>', 'gi');
+        text = text.replace(re1, '<' + tag + '>$1</' + tag + '>');
+        var re2 = new RegExp('<\\/' + tag + '>([^<]*)<\\/' + tag + '>', 'gi');
+        text = text.replace(re2, '$1</' + tag + '>');
+    });
+
+    text = normalizeInlineTags(text);
+
+    var heartMatch = text.match(/<HEART>([\s\S]*?)(?:<\/HEART>|<STATE>|$)/i);
+    var stateMatch = text.match(/<STATE>([\s\S]*?)(?:<\/STATE>|<RATE>|$)/i);
+    var rateMatch = text.match(/<RATE>[^\d]*(\d+)/i);
+    if (heartMatch || stateMatch || rateMatch) {
+        if (data.hearts[charId]) {
+            data.hearts[charId].push({
+                text: heartMatch ? heartMatch[1].trim() : '',
+                state: stateMatch ? stateMatch[1].trim() : '',
+                heartRate: rateMatch ? Math.min(180, Math.max(40, parseInt(rateMatch[1]))) : 72,
+                time: Date.now()
+            });
+            save();
+        }
+    }
+
+    text = text.replace(/<HEART>[\s\S]*?<\/HEART>/gi, '')
+               .replace(/<STATE>[\s\S]*?<\/STATE>/gi, '')
+               .replace(/<RATE>[\s\S]*?<\/RATE>/gi, '')
+               .replace(/<\/?HEART[^>]*>/gi, '')
+               .replace(/<\/?STATE[^>]*>/gi, '')
+               .replace(/<\/?RATE[^>]*>/gi, '');
+    return text;
+}
+
+function dispatchInlineOutput(text, ctx) {
+    var savedCharId = ctx.savedCharId, charName = ctx.charName, acc = ctx.acc, charData = ctx.charData, hadStructuredTag = ctx.hadStructuredTag;
+    var data = ctx.data;
+    var chatMsgsForQuote = data.chats[savedCharId] || [];
+var _lastSendKey = '';
+var _lastSendAt = 0;
+
+function _normKey(s) {
+    return String(s || '').replace(/\s+/g, ' ').trim();
+}
+
+    var _sentKeys = {};
+
+    function sendAiText(p, q, dly) {
+        setTimeout(function() {
+            var content = cleanAiTextHead(p || '');
+            if (!content && q && q.quoteContent) return;
+            if (!content) return;
+
+            // ===== 防引用重复：同内容+同引用 1.5秒内只发一次 =====
+            var dedupKey = (q && q.quoteContent ? 'Q:' + q.quoteContent + '|' : '') + content.replace(/\s+/g, '');
+            var now = Date.now();
+            if (_sentKeys[dedupKey] && (now - _sentKeys[dedupKey] < 1500)) {
+                return;
+            }
+            _sentKeys[dedupKey] = now;
+
+            var msg = { role: 'ai', content: content, time: Date.now() };
+            if (q) { msg.quoteContent = q.quoteContent; msg.quoteTime = q.quoteTime; }
+            appendMsgToChat(savedCharId, msg);
+            if (typeof pushNotify === 'function') {
+                pushNotify(charName, content.slice(0, 60), { tag: 'chat-' + savedCharId + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) });
+            }
+        }, dly);
+    }
+
+    function dispatchInline(part, startDelay) {
+        var delayX = startDelay || 0;
+        var tokens = [];
+        var re = /<QUOTE>([\s\S]*?)<\/QUOTE>|<IMAGE>([\s\S]*?)<\/IMAGE>\s*(?:<DESC>([\s\S]*?)<\/DESC>)?|(\|\|\|PAT\|\|\|)/gi;
+        var idx = 0, m;
+
+        while ((m = re.exec(part)) !== null) {
+            if (m.index > idx) {
+                var plain = part.slice(idx, m.index).replace(/<\/?(QUOTE|IMAGE|DESC)>/gi, '').trim();
+                if (plain) tokens.push({ type: 'text', content: plain });
+            }
+            if (m[1] != null) tokens.push({ type: 'quote', content: m[1] });
+            else if (m[2] != null) tokens.push({ type: 'image', prompt: m[2], desc: m[3] || '' });
+            else if (m[4] != null) tokens.push({ type: 'pat' });
+            idx = re.lastIndex;
+        }
+
+        var tail = part.slice(idx).replace(/<\/?(QUOTE|IMAGE|DESC)>/gi, '').trim();
+        if (tail) tokens.push({ type: 'text', content: tail });
+
+        var i = 0;
+        while (i < tokens.length) {
+            var tk = tokens[i];
+            if (tk.type === 'quote') {
+                var quoteMeta = resolveQuoteMeta(tk.content, chatMsgsForQuote);
+                if (i + 1 < tokens.length && tokens[i + 1].type === 'text') {
+                    i++;
+                    var textTk = tokens[i];
+                    sendAiText(textTk.content, quoteMeta, delayX);
+                    delayX += 280 + Math.min(textTk.content.length * 22, 700);
+                } else {
+                    sendAiText('', quoteMeta, delayX);
+                    delayX += 200;
+                }
+            } else if (tk.type === 'text') {
+                sendAiText(tk.content, null, delayX);
+                delayX += 280 + Math.min(tk.content.length * 22, 700);
+            } else if (tk.type === 'image') {
+                if (D.settings.polliOn) {
+                    (function(prompt, desc, dly) {
+                        setTimeout(function() {
+                            var sp = splitPromptDesc(prompt, desc);
+                            if (!sp.prompt) return;
+                            appendMsgToChat(savedCharId, {
+                                role: 'ai',
+                                type: 'image',
+                                imageUrl: buildImageUrlByPrompt(sp.prompt),
+                                imageDesc: sp.desc,
+                                time: Date.now()
+                            });
+                        }, dly);
+                    })(tk.prompt, tk.desc, delayX);
+                    delayX += 220;
+                }
+            } else if (tk.type === 'pat') {
+                (function(dly) {
+                    setTimeout(function() {
+                        appendMsgToChat(savedCharId, { role: 'sys', type: 'sys', content: charName + ' 拍了拍 ' + (acc ? acc.nick : '你'), time: Date.now() });
+                    }, dly);
+                })(delayX);
+                delayX += 200;
+            }
+            i++;
+        }
+        return delayX;
+    }
+
+    if (!text || !text.trim()) {
+        if (hadStructuredTag) return 0;
+        appendMsgToChat(savedCharId, { role: 'ai', content: '…', time: Date.now() });
+        return 0;
+    }
+
+    var totalDelay = 0;
+    if (D.settings.segment && text.indexOf('<SPLIT>') >= 0) {
+        var parts = text.split('<SPLIT>').filter(function(p) { return p && p.trim(); });
+        var d0 = 0;
+        parts.forEach(function(p) { d0 = dispatchInline(p, d0); });
+        totalDelay = d0;
+    } else if (D.settings.segment && /\n/.test(text)) {
+        // 兜底：AI没用<SPLIT>但用了换行，按换行拆成多条
+        var lines = text.split('\n').filter(function(p) { return p && p.trim(); });
+        if (lines.length > 1) {
+            var d0 = 0;
+            lines.forEach(function(p) { d0 = dispatchInline(p, d0); });
+            totalDelay = d0;
+        } else {
+            totalDelay = dispatchInline(text, 0);
+        }
+    } else {
+        totalDelay = dispatchInline(text, 0);
+    }
+
+    if (typeof detectEmailInquiry === 'function') {
+        var plainForDetect = text
+            .replace(/<QUOTE>[\s\S]*?<\/QUOTE>/gi, '')
+            .replace(/<IMAGE>[\s\S]*?<\/IMAGE>/gi, '')
+            .replace(/<DESC>[\s\S]*?<\/DESC>/gi, '')
+            .replace(/\|\|\|PAT\|\|\|/g, '')
+            .replace(/<SPLIT>/g, ' ')
+            .trim();
+        detectEmailInquiry(plainForDetect, charData);
+    }
+
+    return totalDelay || 0;
+}
+
+function processResp(text) {
+    // ===== 防重复处理（1.5秒内同内容只处理一次）=====
+    var _k = String(text || '').replace(/\s+/g, ' ').trim();
+    var _now = Date.now();
+    if (_k && window.__lastRespKey === _k && (_now - (window.__lastRespAt || 0) < 1500)) {
+        return 0;
+    }
+    window.__lastRespKey = _k;
+    window.__lastRespAt = _now;
+
+    var pre = prepareRespText(text);
+    text = pre.text;
+    var hadStructuredTag = pre.hadStructuredTag;
+
+    var data = getAccData();
+    var acc = getCurAcc();
+    var charId = curChar ? curChar.id : respondingCharId;
+    if (!charId) return 0;
+
+    var savedCharId = charId;
+    var charData = data.chars.find(function(c) { return c.id === charId; });
+    var charName = charData ? charData.displayName : '角色';
+
+    pLog('start', { len: text.length, tags: countTags(text), charId: savedCharId });
+
+    text = handleHeartStateRate(text, data, charId);
+
+    // --- 结构化标签处理 ---
+    var recallCheck = text.match(/<RECALL>([\s\S]*?)<\/RECALL>/);
+    if (recallCheck && recallCheck[1].length > 50) {
+        text = text.replace(/<RECALL>([\s\S]*?)<\/RECALL>/g, '$1');
+    }
+
+    text = text.replace(/<PAT>/g, '|||PAT|||');
+    var selfPatCount = (text.match(/<SELFPAT>/g) || []).length;
+    for (var sp = 0; sp < Math.min(selfPatCount, 3); sp++) {
+        appendMsgToChat(savedCharId, { role: 'sys', type: 'sys', content: charName + ' 拍了拍自己', time: Date.now() });
+    }
+    text = text.replace(/<SELFPAT>/g, '');
+
+    var recallMatch = text.match(/<RECALL>([\s\S]*?)<\/RECALL>/);
+    if (recallMatch && recallMatch[1].trim().length <= 50) {
+        appendMsgToChat(savedCharId, { role: 'ai', content: recallMatch[1].trim(), time: Date.now(), recalled: true, recalledContent: recallMatch[1].trim() });
+    }
+    text = text.replace(/<RECALL>[\s\S]*?<\/RECALL>/g, '');
+
+    var momentMatches = text.match(/<MOMENT>([\s\S]*?)<\/MOMENT>/g) || [];
+    momentMatches.forEach(function(mom) {
+        var content = mom.replace(/<\/?MOMENT>/g, '').trim();
+        var images = [];
+        var imgMatches = content.match(/<IMG>([\s\S]*?)<\/IMG>/g) || [];
+        if (imgMatches.length && D.settings.polliOn) {
+            imgMatches.slice(0, 9).forEach(function(img) {
+                var prompt = img.replace(/<\/?IMG>/g, '').trim();
+                var imgUrl = 'https://gen.pollinations.ai/image/' + encodeURIComponent(prompt) + '?model=' + D.settings.polliModel + '&seed=' + Math.floor(Math.random() * 9999) + '&nologo=true';
+                if (D.settings.polliKey) imgUrl += '&key=' + encodeURIComponent(D.settings.polliKey);
+                images.push({ url: imgUrl, desc: prompt });
+            });
+        }
+        content = content.replace(/<IMG>[\s\S]*?<\/IMG>/g, '').trim();
+
+        var locMatch = content.match(/<LOC>([\s\S]*?)<\/LOC>/);
+        var location = locMatch ? locMatch[1].trim() : '';
+        content = content.replace(/<LOC>[\s\S]*?<\/LOC>/g, '').trim();
+        if (content || images.length) {
+            data.moments.push({ id: genId('mom'), authorId: charId, authorType: 'ai', content: content, images: images, location: location, visibleGroups: [], likes: [], comments: [], time: Date.now() });
+            save();
+            appendMsg({ role: 'sys', type: 'sys', content: charName + ' 发了一条朋友圈', time: Date.now() });
+        }
+    });
+    text = text.replace(/<MOMENT>[\s\S]*?<\/MOMENT>/g, '');
+
+    var likeMatches = text.match(/<LIKE>([\s\S]*?)<\/LIKE>/g) || [];
+    likeMatches.forEach(function(like) {
+        var momId = like.replace(/<\/?LIKE>/g, '').trim();
+        var mom = data.moments.find(function(m) { return m.id === momId; });
+        if (mom && mom.likes.indexOf(charId) < 0) {
+            mom.likes.push(charId);
+            save();
+            if (mom.authorType === 'user') appendMsg({ role: 'sys', type: 'sys', content: charName + ' 赞了你的朋友圈', time: Date.now() });
+        }
+    });
+    text = text.replace(/<LIKE>[\s\S]*?<\/LIKE>/g, '');
+
+    var commentRegex = /<COMMENT\s+id="([^"]+)">([\s\S]*?)<\/COMMENT>/g;
+    var cm;
+    while ((cm = commentRegex.exec(text)) !== null) {
+        var mom = data.moments.find(function(m) { return m.id === cm[1]; });
+        if (mom && cm[2].trim()) {
+            if (!mom.comments) mom.comments = [];
+            mom.comments.push({ id: genId('cmt'), authorId: charId, content: cm[2].trim(), time: Date.now() });
+            save();
+            if (mom.authorType === 'user') appendMsg({ role: 'sys', type: 'sys', content: charName + ' 评论了你的朋友圈', time: Date.now() });
+        }
+    }
+    text = text.replace(/<COMMENT\s+id="[^"]+">[\s\S]*?<\/COMMENT>/g, '');
+
+    var delMatches = text.match(/<DEL_MOMENT>([\s\S]*?)<\/DEL_MOMENT>/g) || [];
+    delMatches.forEach(function(del) {
+        var momId = del.replace(/<\/?DEL_MOMENT>/g, '').trim();
+        var idx = data.moments.findIndex(function(m) { return m.id === momId && m.authorId === charId; });
+        if (idx >= 0) { data.moments.splice(idx, 1); save(); appendMsg({ role: 'sys', type: 'sys', content: charName + ' 删除了一条朋友圈', time: Date.now() }); }
+    });
+    text = text.replace(/<DEL_MOMENT>[\s\S]*?<\/DEL_MOMENT>/g, '');
+
+    if (typeof getMapForChar === 'function') {
+        var addPlaceMatches = text.match(/<ADDPLACE>([\s\S]*?)<\/ADDPLACE>/g) || [];
+        addPlaceMatches.forEach(function(ap) {
+            try {
+                var placeData = JSON.parse(ap.replace(/<\/?ADDPLACE>/g, '').trim());
+                var map = getMapForChar(savedCharId);
+                if (map && placeData.name && !map.places.some(function(p) { return p.name === placeData.name; })) {
+                    map.places.push({ id: genId('place'), name: placeData.name, type: placeData.type || 'other', desc: placeData.desc || '', x: Math.round(50 + Math.random() * 300), y: Math.round(50 + Math.random() * 300), addedAt: Date.now() });
+                    save();
+                    appendMsgToChat(savedCharId, { role: 'sys', type: 'sys', content: charName + ' 标记了新地点：' + placeData.name, time: Date.now() });
+                }
+            } catch(e) {}
+        });
+        text = text.replace(/<ADDPLACE>[\s\S]*?<\/ADDPLACE>/g, '');
+
+        var moveMatches = text.match(/<MOVETO>([\s\S]*?)<\/MOVETO>/g) || [];
+        moveMatches.forEach(function(mv) {
+            var placeName = mv.replace(/<\/?MOVETO>/g, '').trim();
+            var map = getMapForChar(savedCharId);
+            if (map && map.places) {
+                var place = map.places.find(function(p) { return p.name.indexOf(placeName) >= 0 || placeName.indexOf(p.name) >= 0; });
+                if (place) {
+                    var d2 = getAccData();
+                    if (!d2.charLocations) d2.charLocations = {};
+                    d2.charLocations[savedCharId] = { placeId: place.id, mapId: map.id, time: Date.now() };
+                    save();
+                }
+            }
+        });
+        text = text.replace(/<MOVETO>[\s\S]*?<\/MOVETO>/g, '');
+
+        var shareMatches = text.match(/<SHARELOC>([\s\S]*?)<\/SHARELOC>/g) || [];
+        shareMatches.forEach(function(sl) {
+            var msg2 = sl.replace(/<\/?SHARELOC>/g, '').trim();
+            var d2 = getAccData();
+            var loc = d2.charLocations ? d2.charLocations[savedCharId] : null;
+            if (loc && D.maps) {
+                var map = D.maps.list.find(function(m) { return m.id === loc.mapId; });
+                var place = map && map.places.find(function(p) { return p.id === loc.placeId; });
+                if (place) appendMsgToChat(savedCharId, { role: 'ai', type: 'location', placeName: place.name, placeType: place.type, mapId: map.id, mapName: map.name, placeId: place.id, content: msg2, time: Date.now() });
+            }
+        });
+        text = text.replace(/<SHARELOC>[\s\S]*?<\/SHARELOC>/g, '');
+
+        var inviteRegex = /<INVITE\s+place="([^"]+)">([\s\S]*?)<\/INVITE>/g;
+        var inv;
+        while ((inv = inviteRegex.exec(text)) !== null) {
+            var map = getMapForChar(savedCharId);
+            if (map && map.places) {
+                var place = map.places.find(function(p) { return p.name.indexOf(inv[1]) >= 0; });
+                if (place) appendMsgToChat(savedCharId, { role: 'ai', type: 'invite', placeName: place.name, placeType: place.type, placeId: place.id, mapId: map.id, content: inv[2].trim(), time: Date.now() });
+            }
+        }
+        text = text.replace(/<INVITE\s+place="[^"]+">[^<]*<\/INVITE>/g, '');
+    }
+
+    var aiTransferRegex = /<TRANSFER\s+id="([^"]+)"\s+amount="([^"]+)">([\s\S]*?)<\/TRANSFER>/g;
+    var atm;
+    while ((atm = aiTransferRegex.exec(text)) !== null) {
+        processAITransfer(atm[1], atm[2], atm[3].trim());
+    }
+    text = text.replace(/<TRANSFER\s+id="[^"]+"\s+amount="[^"]+">[\s\S]*?<\/TRANSFER>/g, '');
+
+    var acceptRegex = /<TRANSFER_ACCEPT\s+id="([^"]+)">([\s\S]*?)<\/TRANSFER_ACCEPT>/g;
+    var rejectRegex = /<TRANSFER_REJECT\s+id="([^"]+)">([\s\S]*?)<\/TRANSFER_REJECT>/g;
+    var tam;
+    while ((tam = acceptRegex.exec(text)) !== null) {
+        updateTransferStatus(tam[1], 'accepted');
+        var origMsg = findMsgById(tam[1]);
+        if (origMsg) {
+            appendMsgToChat(savedCharId, {
+                id: genId('transfer'),
+                role: 'ai',
+                type: 'transfer',
+                transferDir: 'in',
+                amount: origMsg.amount,
+                remark: origMsg.remark || '',
+                status: 'accepted',
+                time: Date.now()
+            });
+        }
+    }
+    text = text.replace(/<TRANSFER_ACCEPT\s+id="[^"]+">[\s\S]*?<\/TRANSFER_ACCEPT>/g, '');
+    while ((tam = rejectRegex.exec(text)) !== null) {
+        updateTransferStatus(tam[1], 'rejected');
+        var origMsg2 = findMsgById(tam[1]);
+        if (origMsg2) {
+            var rjWallet = getWallet();
+            rjWallet.balance = Math.round((rjWallet.balance + origMsg2.amount) * 100) / 100;
+            saveWallet();
+            addBill('transfer_in', origMsg2.amount, '转账退回', '');
+            refreshWalletPreview();
+            appendMsgToChat(savedCharId, {
+                id: genId('transfer'),
+                role: 'ai',
+                type: 'transfer',
+                transferDir: 'in',
+                amount: origMsg2.amount,
+                remark: '转账退回',
+                status: 'rejected',
+                time: Date.now()
+            });
+        }
+    }
+    text = text.replace(/<TRANSFER_REJECT\s+id="[^"]+">[\s\S]*?<\/TRANSFER_REJECT>/g, '');
+
+    var emailMatches = text.match(/<EMAIL\s+subject="([^"]*)">([\s\S]*?)<\/EMAIL>/g) || [];
+    emailMatches.forEach(function(em) {
+        var emMatch = em.match(/<EMAIL\s+subject="([^"]*)">([\s\S]*?)<\/EMAIL>/);
+        if (!emMatch) return;
+        var subject = emMatch[1];
+        var body = emMatch[2].trim();
+        var charEmailFrom = charData ? (charData.emailAddress || charData.email) : null;
+        if (!charEmailFrom) return;
+        var newEmail = {
+            id: 'email_' + genId(),
+            from: charEmailFrom,
+            to: getUserEmail(),
+            subject: subject,
+            body: body,
+            time: Date.now(),
+            read: false,
+            starred: false,
+            folder: 'inbox',
+            replyTo: null,
+            isProactive: true
+        };
+        data.emails = data.emails || [];
+        data.emails.push(newEmail);
+        save();
+        if (typeof showNotify === 'function') {
+            showNotify([{ name: charData.displayName || charData.realName, avatar: charData.avatar, content: '📧 ' + subject, time: Date.now(), accId: D.currentAccId, type: 'email' }]);
+        }
+        if (typeof pushNotify === 'function') {
+            pushNotify(charData.displayName || charData.realName, '📧 ' + subject, { icon: charData.avatar || '', charId: savedCharId, tag: 'email-' + savedCharId });
+        }
+        if (typeof updateEmailBadge === 'function') updateEmailBadge();
+        appendMsgToChat(savedCharId, { role: 'sys', type: 'sys', content: charName + ' 给你发了一封邮件：' + subject, time: Date.now() });
+    });
+    text = text.replace(/<EMAIL\s+subject="[^"]*">[\s\S]*?<\/EMAIL>/g, '');
+
+    var chatCallMatch = text.match(/<CALL\s+type="(voice|video)">([\s\S]*?)<\/CALL>/);
+    if (chatCallMatch) {
+        var chatCallType = chatCallMatch[1];
+        var chatCallReason = chatCallMatch[2].trim();
+        text = text.replace(/<CALL\s+type="(voice|video)">[\s\S]*?<\/CALL>/g, '');
+        if (typeof aiInitiateCall === 'function') {
+            setTimeout(function() { aiInitiateCall(savedCharId, chatCallType, chatCallReason); }, 500);
+        }
+    }
+
+    var voiceMatches = text.match(/<VOICE>([\s\S]*?)<\/VOICE>/g) || [];
+    voiceMatches.forEach(function(v) {
+        var vc = v.replace(/<\/?VOICE>/g, '').trim();
+        if (vc) appendMsgToChat(savedCharId, { role: 'ai', type: 'voice', content: vc, duration: Math.ceil(vc.length / 5), time: Date.now() });
+    });
+    text = text.replace(/<VOICE>[\s\S]*?<\/VOICE>/g, '');
+
+    var stickerMatches = text.match(/<STICKER>([\s\S]*?)<\/STICKER>/g) || [];
+    stickerMatches.forEach(function(stk) {
+        var desc = stk.replace(/<\/?STICKER>/g, '').trim();
+        if (desc) {
+            var matched = data.stickers ? data.stickers.find(function(s) { return s.desc === desc || s.desc.indexOf(desc) >= 0 || desc.indexOf(s.desc) >= 0; }) : null;
+            if (matched) appendMsgToChat(savedCharId, { role: 'ai', type: 'sticker', stickerUrl: matched.url, stickerDesc: matched.desc, time: Date.now() });
+        }
+    });
+    text = text.replace(/<STICKER>[\s\S]*?<\/STICKER>/g, '');
+    // --- 结构化标签处理结束 ---
+
+    pLog('before-inline', { len: text.length, tags: countTags(text) });
+
+    return dispatchInlineOutput(text, {
+        data: data,
+        acc: acc,
+        savedCharId: savedCharId,
+        charData: charData,
+        charName: charName,
+        hadStructuredTag: hadStructuredTag
+    });
 }

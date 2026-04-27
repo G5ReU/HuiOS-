@@ -1,4 +1,3 @@
-
 // ===== 风控接入（最小版）=====
 const RISK_API = "https://huios-push.onrender.com";
 
@@ -321,6 +320,78 @@ function openMyMoments() {
 }
 
 function closeMyMoments() { $('myMomentsPage').classList.remove('active'); }
+
+// ========== 多选消息删除 ==========
+var isMsgBatchMode = false;
+var selectedMsgIndices = [];
+
+function enterMsgBatchMode() {
+    hideMsgMenu();
+    isMsgBatchMode = true;
+    selectedMsgIndices = [selectedMsgIdx];
+    renderMsgs(false);
+    showMsgBatchBar();
+}
+
+function toggleMsgSelect(idx) {
+    if (!isMsgBatchMode) return;
+    var pos = selectedMsgIndices.indexOf(idx);
+    if (pos >= 0) selectedMsgIndices.splice(pos, 1);
+    else selectedMsgIndices.push(idx);
+    renderMsgs(false);
+    updateMsgBatchBar();
+}
+
+function showMsgBatchBar() {
+    var bar = $('msgBatchBar');
+    if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'msgBatchBar';
+        bar.style.cssText = 'position:absolute;bottom:0;left:0;right:0;background:rgba(255,255,255,0.95);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);padding:12px 20px;display:flex;justify-content:space-between;align-items:center;box-shadow:0 -2px 10px rgba(0,0,0,0.05);z-index:999;border-top:1px solid #eee;padding-bottom:calc(12px + env(safe-area-inset-bottom));';
+        $('chatroom').appendChild(bar);
+    }
+    bar.style.display = 'flex';
+    updateMsgBatchBar();
+}
+
+function updateMsgBatchBar() {
+    var bar = $('msgBatchBar');
+    if (!bar) return;
+    bar.innerHTML = '<button onclick="exitMsgBatchMode()" style="padding:8px 20px;border:none;background:#f0f0f0;border-radius:20px;color:#333;font-size:14px;cursor:pointer">取消</button>' +
+                    '<div style="font-size:13px;color:#666">已选 '+selectedMsgIndices.length+' 条</div>' +
+                    '<button onclick="confirmMsgBatchDelete()" style="padding:8px 20px;border:none;background:#FFE0E0;border-radius:20px;color:#FF6B6B;font-size:14px;cursor:pointer;font-weight:bold">删除</button>';
+}
+
+function exitMsgBatchMode() {
+    isMsgBatchMode = false;
+    selectedMsgIndices = [];
+    var bar = $('msgBatchBar');
+    if (bar) bar.style.display = 'none';
+    renderMsgs(false);
+}
+
+function confirmMsgBatchDelete() {
+    if (selectedMsgIndices.length === 0) return toast('请选择要删除的消息');
+    if (!confirm('确定删除选中的 ' + selectedMsgIndices.length + ' 条消息吗？')) return;
+
+    var data = getAccData();
+    var charId = curChar ? curChar.id : respondingCharId;
+    var msgs = data.chats[charId];
+
+    selectedMsgIndices.sort(function(a, b) { return b - a; });
+
+    selectedMsgIndices.forEach(function(idx) {
+        if (idx >= 0 && idx < msgs.length) {
+            msgs.splice(idx, 1);
+        }
+    });
+
+    save();
+    exitMsgBatchMode();
+    toast('已删除');
+}
+
+
 function openChat(id) {
     var data = getAccData();
     curChar = data.chars.find(function(c) { return c.id === id; });
@@ -361,6 +432,7 @@ function openChat(id) {
 }
 
 function closeChat() {
+    if (typeof exitMsgBatchMode === 'function' && isMsgBatchMode) exitMsgBatchMode();
     $('chatroom').classList.remove('active');
     if (curChar) lastInteract[curChar.id] = Date.now();
     curChar = null;
@@ -407,6 +479,23 @@ function renderMsgs(scroll) {
 }
 
 function renderMsg(m, idx) {
+    var h = _renderMsgRaw(m, idx);
+    if (!h) return '';
+
+    // 如果处于批量选择模式，给非系统消息包裹一个选择复选框
+    if (typeof isMsgBatchMode !== 'undefined' && isMsgBatchMode && m.type !== 'sys') {
+        var isSel = selectedMsgIndices.indexOf(idx) >= 0;
+        var chkStyle = 'width:20px;height:20px;border-radius:50%;border:1.5px solid ' + (isSel ? '#4CAF50' : '#ccc') + ';background:' + (isSel ? '#4CAF50' : 'transparent') + ';margin:auto 8px auto 4px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:white;font-size:12px;transition:all 0.2s;';
+        var wrapperHtml = '<div class="msg-batch-row" style="display:flex;align-items:center;width:100%;padding:4px 0;background:' + (isSel ? 'rgba(76,175,80,0.08)' : 'transparent') + ';cursor:pointer" onclick="toggleMsgSelect(' + idx + ')">';
+        wrapperHtml += '<div style="' + chkStyle + '">' + (isSel ? '✓' : '') + '</div>';
+        wrapperHtml += '<div style="flex:1;pointer-events:none;">' + h + '</div>';
+        wrapperHtml += '</div>';
+        return wrapperHtml;
+    }
+    return h;
+}
+
+function _renderMsgRaw(m, idx) {
     if (m.type === 'sys') {
         if (D.theme.showFuncTips === false) {
             var tipKeywords = ['发了一条朋友圈', '赞了你的朋友圈', '评论了你的朋友圈', '回复了你的评论', '删除了一条朋友圈'];
@@ -560,7 +649,8 @@ callHtml += '<button ontouchstart="event.stopPropagation()" onclick="rejectAICal
         return typeof renderTransferBubble === 'function' ? renderTransferBubble(m) : '';
     }
     if (m.type === 'image') {
-        if (m.imageUrl) h += '<img class="msg-image" src="'+m.imageUrl+'" onclick="handleImgClick(event,'+idx+')">';
+        // 增加 -webkit-touch-callout 阻止 iOS 原生菜单
+        if (m.imageUrl) h += '<img class="msg-image" src="'+m.imageUrl+'" onclick="handleImgClick(event,'+idx+')" style="-webkit-touch-callout: none; -webkit-user-select: none;">';
         else h += '<div class="msg-image-placeholder">[图片: '+esc(m.imageDesc||'')+']</div>';
     } else if (m.type === 'sticker') {
         h += '<div class="msg-sticker" onclick="viewStickerFull(\''+esc(m.stickerUrl)+'\')" title="'+esc(m.stickerDesc||'')+'">';
@@ -622,11 +712,11 @@ function bindMsgTouchEvents() {
         node._touchBound = true;
         var idx = parseInt(node.getAttribute('data-msgidx'));
 node.addEventListener('touchstart', function(e) {
+    if (typeof isMsgBatchMode !== 'undefined' && isMsgBatchMode) return; // 多选模式下拦截长按
     var t = e.target;
 
-    // 这些可交互元素不拦截，交给它们自己的点击逻辑
+    // 删除了 t.closest('.msg-image')，让图片可以触发长按
     if (t.closest('.msg-voice') ||
-        t.closest('.msg-image') ||
         t.closest('.msg-location-card') ||
         t.closest('.msg-invite-card') ||
         t.closest('.invite-btn-accept') ||
@@ -645,7 +735,9 @@ node.addEventListener('touchstart', function(e) {
     };
     longPressTimer = setTimeout(function() {
         if (longPressSaved !== null) {
+            window._isLongPressingImg = true; // 标记正在长按
             showMsgMenuAt(longPressSaved.x, longPressSaved.y, longPressSaved.idx);
+            setTimeout(function(){ window._isLongPressingImg = false; }, 500); // 500ms后解除拦截
         }
     }, 500);
 }, { passive: true });
@@ -692,6 +784,7 @@ function doPatByType(type) {
     appendMsg({ role: 'sys', type: 'sys', content: content, time: Date.now() });
 }
     function appendMsgToChat(charId, msg) {
+    if (typeof exitMsgBatchMode === 'function' && isMsgBatchMode) exitMsgBatchMode();
     var data = getAccData();
     if (!charId || !data || !data.chats[charId]) return -1;
 
@@ -757,6 +850,7 @@ function doPatByType(type) {
     return idx;
 }
 function appendMsg(msg) {
+    if (typeof exitMsgBatchMode === 'function' && isMsgBatchMode) exitMsgBatchMode();
     var data = getAccData();
     var charId = curChar ? curChar.id : respondingCharId;
     if (!charId || !data || !data.chats[charId]) return -1;
@@ -864,6 +958,7 @@ function toggleVoice(idx) {
 }
 
 function handleImgClick(e, idx) {
+    if (window._isLongPressingImg) return; // 如果刚刚触发了长按，忽略这次单击
     e.preventDefault(); e.stopPropagation();
     imgClickCount++;
     if (imgClickCount === 1) {
@@ -950,6 +1045,7 @@ var longPressTimer = null;
 var longPressSaved = null;
 
 function msgTouchStart(e, idx) {
+    if (isMsgBatchMode) return;
     // 阻止iOS系统长按菜单
     e.preventDefault();
     // 保存坐标，因为异步回调里 e.touches 会消失
@@ -982,9 +1078,12 @@ function showMsgMenu(e, idx) {
     var h = '';
     if (msg.recalled) {
         h = '<div class="msg-menu-item" onclick="viewRecalled('+idx+')">查看</div>';
+        h += '<div class="msg-menu-item" onclick="enterMsgBatchMode()">多选</div>';
     } else {
         h += '<div class="msg-menu-item" onclick="copyMsg()">复制</div>';
         h += '<div class="msg-menu-item" onclick="quoteThisMsg()">引用</div>';
+        h += '<div class="msg-menu-item" onclick="enterMsgBatchMode()">多选</div>';
+        if (msg.type === 'image') h += '<div class="msg-menu-item" onclick="retryRecognizeImage()">重新识图</div>';
         if (msg.type !== 'image' && msg.type !== 'voice') h += '<div class="msg-menu-item" onclick="editMsgContent()">编辑</div>';
         h += '<div class="msg-menu-item" onclick="recallMsg()">撤回</div>';
         h += '<div class="msg-menu-item danger" onclick="deleteMsg()">删除</div>';
@@ -1014,9 +1113,12 @@ function showMsgMenuAt(x, y, idx) {
     var h = '';
     if (msg.recalled) {
         h = '<div class="msg-menu-item" onclick="viewRecalled('+idx+')">查看</div>';
+        h += '<div class="msg-menu-item" onclick="enterMsgBatchMode()">多选</div>';
     } else {
         h += '<div class="msg-menu-item" onclick="copyMsg()">复制</div>';
         h += '<div class="msg-menu-item" onclick="quoteThisMsg()">引用</div>';
+        h += '<div class="msg-menu-item" onclick="enterMsgBatchMode()">多选</div>';
+        if (msg.type === 'image') h += '<div class="msg-menu-item" onclick="retryRecognizeImage()">重新识图</div>';
         if (msg.type !== 'image' && msg.type !== 'voice') h += '<div class="msg-menu-item" onclick="editMsgContent()">编辑</div>';
         h += '<div class="msg-menu-item" onclick="recallMsg()">撤回</div>';
         h += '<div class="msg-menu-item danger" onclick="deleteMsg()">删除</div>';
@@ -1622,21 +1724,57 @@ h += '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4p
     el.innerHTML = h + '</div>';
 }
 
-function cTouchStart(e) { touchStartX = e.touches[0].clientX; }
+var touchStartX = 0, touchStartY = 0;
+var momTouchStartX = 0, momTouchStartY = 0;
+
+function cTouchStart(e) {
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+}
 
 function cTouchMove(e, id) {
-    var diff = touchStartX - e.touches[0].clientX;
-    if (diff > 50) {
+    var dx = touchStartX - e.touches[0].clientX;
+    var dy = Math.abs(touchStartY - e.touches[0].clientY);
+
+    // 关键：纵向滚动优先，不处理横滑
+    if (dy > Math.abs(dx)) return;
+
+    if (dx > 50) {
         if (swipedId && swipedId !== id) document.querySelector('.contact-item[data-id="'+swipedId+'"]')?.classList.remove('swiped');
         swipedId = id;
         document.querySelector('.contact-item[data-id="'+id+'"]')?.classList.add('swiped');
-    } else if (diff < -30 && swipedId === id) {
+    } else if (dx < -30 && swipedId === id) {
         document.querySelector('.contact-item[data-id="'+id+'"]')?.classList.remove('swiped');
         swipedId = null;
     }
 }
 
-function cTouchEnd() {}
+function momTouchStart(e) {
+    momTouchStartX = e.touches[0].clientX;
+    momTouchStartY = e.touches[0].clientY;
+}
+
+function momTouchMove(e, id) {
+    var dx = momTouchStartX - e.touches[0].clientX;
+    var dy = Math.abs(momTouchStartY - e.touches[0].clientY);
+
+    // 关键：纵向滚动优先
+    if (dy > Math.abs(dx)) return;
+
+    if (dx > 50) {
+        if (swipedMomentId && swipedMomentId !== id) {
+            var old = document.querySelector('.moment-item[data-mid="'+swipedMomentId+'"]');
+            if (old) old.classList.remove('swiped');
+        }
+        swipedMomentId = id;
+        var el = document.querySelector('.moment-item[data-mid="'+id+'"]');
+        if (el) el.classList.add('swiped');
+    } else if (dx < -30 && swipedMomentId === id) {
+        var el2 = document.querySelector('.moment-item[data-mid="'+id+'"]');
+        if (el2) el2.classList.remove('swiped');
+        swipedMomentId = null;
+    }
+}
 
 function cClick(id) {
     if (swipedId) { document.querySelector('.contact-item[data-id="'+swipedId+'"]')?.classList.remove('swiped'); swipedId = null; return; }
@@ -2262,3 +2400,28 @@ function doCleanMoments(mode, charId) {
     if ($('myMomentsPage') && $('myMomentsPage').classList.contains('active')) openMyMoments();
     toast('已清理 ' + removed + ' 条朋友圈');
 }
+// ========== 重新识图功能 ==========
+function retryRecognizeImage() {
+    var data = getAccData();
+    var charId = curChar ? curChar.id : respondingCharId;
+    var msg = data.chats[charId][selectedMsgIdx];
+    
+    if (!msg || msg.type !== 'image' || !msg.imageUrl) {
+        hideMsgMenu();
+        return toast('无法识图，图片数据丢失');
+    }
+
+    hideMsgMenu();
+    toast('正在重新识图，请稍候...');
+
+    recognizeImage(msg.imageUrl, function(desc) {
+        if (!desc || desc === '图片') {
+            toast('识图失败：可能是 API 报错或超时，请稍后再试');
+        } else {
+            msg.imageDesc = desc;
+            save();
+            toast('✅ 识图成功！(单点图片可查看描述)');
+        }
+    });
+}
+function cTouchEnd() {}
