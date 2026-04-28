@@ -1265,23 +1265,44 @@ function _normKey(s) {
         if (tail) tokens.push({ type: 'text', content: tail });
 
         var i = 0;
+        var pendingText = '';
+
         while (i < tokens.length) {
             var tk = tokens[i];
+
             if (tk.type === 'quote') {
+                // quote前的text不单独发，合并到quote消息里
                 var quoteMeta = resolveQuoteMeta(tk.content, chatMsgsForQuote);
+                var afterText = '';
                 if (i + 1 < tokens.length && tokens[i + 1].type === 'text') {
                     i++;
-                    var textTk = tokens[i];
-                    sendAiText(textTk.content, quoteMeta, delayX);
-                    delayX += 280 + Math.min(textTk.content.length * 22, 700);
-                } else {
-                    sendAiText('', quoteMeta, delayX);
-                    delayX += 200;
+                    afterText = tokens[i].content;
                 }
+                var combined = (pendingText + afterText).trim();
+                pendingText = '';
+                if (combined || quoteMeta) {
+                    sendAiText(combined || '', quoteMeta, delayX);
+                    delayX += 280 + Math.min((combined || '').length * 22, 700);
+                }
+
             } else if (tk.type === 'text') {
-                sendAiText(tk.content, null, delayX);
-                delayX += 280 + Math.min(tk.content.length * 22, 700);
+                // 偷看下一个是不是quote，是的话先暂存不发
+                if (i + 1 < tokens.length && tokens[i + 1].type === 'quote') {
+                    pendingText += tk.content;
+                } else {
+                    var fullText = pendingText + tk.content;
+                    pendingText = '';
+                    sendAiText(fullText, null, delayX);
+                    delayX += 280 + Math.min(fullText.length * 22, 700);
+                }
+
             } else if (tk.type === 'image') {
+                // 先flush暂存的text
+                if (pendingText) {
+                    sendAiText(pendingText, null, delayX);
+                    delayX += 280 + Math.min(pendingText.length * 22, 700);
+                    pendingText = '';
+                }
                 if (D.settings.polliOn) {
                     (function(prompt, desc, dly) {
                         setTimeout(function() {
@@ -1298,7 +1319,14 @@ function _normKey(s) {
                     })(tk.prompt, tk.desc, delayX);
                     delayX += 220;
                 }
+
             } else if (tk.type === 'pat') {
+                // 先flush暂存的text
+                if (pendingText) {
+                    sendAiText(pendingText, null, delayX);
+                    delayX += 280 + Math.min(pendingText.length * 22, 700);
+                    pendingText = '';
+                }
                 (function(dly) {
                     setTimeout(function() {
                         appendMsgToChat(savedCharId, { role: 'sys', type: 'sys', content: charName + ' 拍了拍 ' + (acc ? acc.nick : '你'), time: Date.now() });
@@ -1308,6 +1336,14 @@ function _normKey(s) {
             }
             i++;
         }
+
+        // flush最后残留的text
+        if (pendingText) {
+            sendAiText(pendingText, null, delayX);
+            delayX += 280 + Math.min(pendingText.length * 22, 700);
+            pendingText = '';
+        }
+
         return delayX;
     }
 
