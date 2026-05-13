@@ -27,6 +27,8 @@ function buildSysPrompt() {
     if (acc && acc.desc) p += '【关于用户"' + acc.persona + '"】\n' + acc.desc + '\n\n';
     var wbContent = getWbContent(charData);
     if (wbContent) p += '【世界观设定】\n' + wbContent + '\n\n';
+    var memContent = getMemContent(charId, 12);
+    if (memContent) p += '【长期记忆】\n' + memContent + '\n\n';
 // 注入近期通话摘要
 var slim = getPromptSlimOpts(charData);
 var callMemCount = slim.callMemCount;
@@ -68,6 +70,19 @@ p += '【当前时间】' + fmtDateTimeByThemeTz(nowTs) + '（UTC' + (tzHour >= 
 
 var memoInfo = typeof getMemoForAI === 'function' ? getMemoForAI() : '';
 if (memoInfo) p += memoInfo;
+var anchorList = typeof getRecentQuoteAnchorsForAI === 'function'
+    ? getRecentQuoteAnchorsForAI(charId, 20)
+    : [];
+
+if (anchorList.length) {
+    p += '【最近可引用片段】\n';
+    anchorList.forEach(function(a) {
+        var who = a.role === 'ai' ? '你' : '用户';
+        p += '[' + a.id + '][' + who + '] ' + a.text + '\n';
+    });
+    p += '\n';
+}
+
 
 if (D.settings.timeAware) {
     var hour = local.getHours();
@@ -124,8 +139,15 @@ if (D.settings.timeAware) {
 
         p += '\n';
     }
-        if (D.settings.segment) {
-        p += '【微信聊天习惯】\n你正在拿着手机和用户聊微信。像真人一样，一句话发一条消息，使用<SPLIT>来模拟连发多条消息。\n例：你在干嘛呀<SPLIT>我刚吃完饭\n不要每一条都长篇大论，长短句结合。\n\n';
+            if (D.settings.segment) {
+        p += '【微信聊天习惯】\n';
+        p += '你正在拿着手机和用户聊微信，要像真人聊天一样发消息。\n';
+        p += '1. 短句优先，能拆开的尽量拆开，不要把好几句情绪话、催促话、撒娇话、吐槽话硬塞进一整段。\n';
+        p += '2. 连发多条消息时，必须使用<SPLIT>作为唯一分隔符。\n';
+        p += '3. 遇到这种口语短句时，尽量分开发：比如“……”“小洄。”“你知不知道你在说什么。”“去睡觉。听话。”“晚安。”这种不要合成一大段。\n';
+        p += '4. 不要输出空白行，不要连续换行，不要拿普通回车代替<SPLIT>。\n';
+        p += '5. 长短句结合，但整体要像真人发微信，不要总是一整坨。\n';
+        p += '示例：你在干嘛呀<SPLIT>我刚吃完饭\n\n';
     } else {
         p += '【微信聊天习惯】\n你正在拿着手机和用户聊微信，回复长度适中，符合现代人打字习惯，绝对不要有机器人的说教感。\n\n';
     }
@@ -138,14 +160,34 @@ if (D.settings.timeAware) {
         p += '- 发手机照片：<IMAGE>英文画面提示词</IMAGE><DESC>中文描述</DESC>\n';
     }
 
-    p += '- 引用回复（强烈建议多用，增加活人感）：<QUOTE>用户真实的原文片段</QUOTE>你的针对性回复\n';
-    p += '  【⚠️引用的高级技巧（极其重要，请彻底打破固定格式）】：\n';
-    p += '  1. 像真人一样，当你想要抓把柄、调侃、划重点、共情对方的某个词，或者逐条回应时，请大胆使用引用！\n';
-    p += '  2. 严禁每次都在第一句话的开头引用！你可以极其灵活地把 <QUOTE> 穿插在句中、句末，甚至配合 <SPLIT> 进行多重引用。\n';
-    p += '  3. 示例1 (穿插在句中)：你可拉倒吧<SPLIT>刚才谁信誓旦旦说<QUOTE>绝对不吃</QUOTE>的？现在又饿了？\n';
-    p += '  4. 示例2 (结尾反问)：我其实还好啦，倒是你，<QUOTE>今天累死了</QUOTE>是真的假的啊？\n';
-    p += '  5. 示例3 (多重/逐条回应)：<QUOTE>第一件事</QUOTE>没问题<SPLIT>至于<QUOTE>第二件事</QUOTE>我还要再想想。\n';
-    p += '  6. 注意：<QUOTE>内的原话必须是对方刚才发过的真实原文（截取几个字或半句话即可），严禁你自己篡改或扩写。\n';
+    p += '- 发链接分享：<LINK url="virtual" title="搜索关键词" desc="一句简介">附带文字</LINK>\n';
+    p += '  ⚠️ 你并不知道真实URL，绝对不要编造网址、域名、路径、参数，也不要在正文里输出 http/https 链接。\n';
+    p += '  系统会根据 title 自动搜索真实网页并替换成真正可打开的链接。\n';
+    p += '  title 必须写得具体，最好带平台名、主题词、作者名、作品名、关键词，不要只写“这个视频”“一首歌”“那个帖子”。\n';
+    p += '  正确示例：<LINK url="virtual" title="李荣浩 乌梅子酱 网易云音乐" desc="这首最近一直在循环">你听这个</LINK>\n';
+    p += '  正确示例：<LINK url="virtual" title="猫咪踩奶搞笑合集 bilibili" desc="这个真的很好笑">你看这个哈哈哈</LINK>\n';
+    p += '  错误示例：<LINK url="https://xxx.com/abc" title="好东西" desc="很好看">你看</LINK>\n';
+p += '- 引用回复：<QUOTE id="锚点ID">聊天里真实出现过的原文片段</QUOTE>你的回复内容\n';
+p += '- 引用回复：<QUOTE id="锚点ID">聊天里真实出现过的原文片段</QUOTE>你的回复内容\n';
+p += '  【引用规则】\n';
+p += '  1. 引用是"单条消息级别"的，不是整轮回复级别。\n';
+p += '  2. <QUOTE> 必须放在它所绑定的那一条消息最开头，而不是整段输出最开头。\n';
+p += '  3. 如果你要连发多条消息，必须用 <SPLIT> 分开；想让第几条带引用，就把 <QUOTE> 写在第几条里面。\n';
+p += '  4. 例如：第一条普通消息<SPLIT><QUOTE id="qa_xxx">绝对不吃</QUOTE>现在又饿了？ 这表示第二条带引用。\n';
+p += '  5. 再例如：第一条<SPLIT>第二条<SPLIT><QUOTE id="qa_xxx">绝对不吃</QUOTE>现在又饿了？ 这表示第三条带引用。\n';
+p += '  6. 不要默认把引用总是放在整轮输出的第一条，除非你真的想让第一条消息带引用。\n';
+p += '  7. 正确格式只能是：<QUOTE id="锚点ID">原文片段</QUOTE>你的回复内容\n';
+p += '  8. id 只能从【最近可引用片段】里选。\n';
+p += '  9. <QUOTE> 内的文字必须和该 id 对应的原文片段一字不差，不能改写、扩写、缩写、替换同义词。\n';
+p += '  10. 你可以引用用户的话，也可以引用你自己之前的话，但都必须来自聊天里真实出现过的原文。\n';
+p += '  11. 一条消息里最多只用 1 个 <QUOTE>。\n';
+p += '  12. 错误示例：<QUOTE id="qa_xxx">绝对不吃</QUOTE>第一条<SPLIT>第二条 这会让引用落在第一条。\n';
+p += '  13. 严禁输出 [引用"..."]、【引用：...】、引用: ... 这类文字前缀；系统只识别 <QUOTE>...</QUOTE>。\n';
+p += '  14. 不要总是在第一句话或固定位置输出，要积极搭配位置和多次引用以丰富内容和达到活人感。\n';
+    p += '\n【排版要求】\n';
+    p += '1. 不要输出空白行，不要连续换行。\n';
+    p += '2. 需要连发多条消息时，只能使用 <SPLIT>，不要用普通换行代替分条。\n';
+    p += '3. 普通文本尽量保持单段，不要随意回车。\n';
 
     p += '\n【心理与状态追踪】（每轮回复的最后【必须】附带）\n';
     p += '格式：<HEART>当前内心最真实的os/碎碎念</HEART><STATE>当前的动作神态/微表情</STATE><RATE>当前心率(40-180纯数字)</RATE>\n';
@@ -221,7 +263,7 @@ p += '内容：' + e.body.slice(0, slim.emailBodyMax) + '\n\n';
 p += getMomentsForAI(charData, slim.momentsCount);
     var stickersInfo = typeof getStickersForAI === 'function' ? getStickersForAI(charId) : '';
     if (stickersInfo) p += stickersInfo;
-    p += '【最终输出要求】你就是角色本人，千万不要出戏！绝对不要输出任何分析推理过程、思考草稿、场景旁白（场景动作请放到<STATE>里），也不要把生成图片的英文提示词发给用户看。直接输出你作为真人发给用户的微信消息以及隐藏的系统标签即可。\n\n';
+    p += '【最终输出要求】你就是角色本人，千万不要出戏！绝对不要输出任何分析推理过程、思考草稿、场景旁白（场景动作请放到<STATE>里），也不要把生成图片的英文提示词发给用户看。不要输出空白行；需要分成多条消息时只能使用<SPLIT>；不要把多句短句硬并成一大段。直接输出你作为真人发给用户的微信消息以及隐藏的系统标签即可。\n\n';
     return p;
 }
 
@@ -311,9 +353,9 @@ function getWbContent(charData) {
     return content.trim();
 }
 
-function getMemContent(charId) {
+function getMemContent(charId, limit) {
     var data = getAccData();
-    var mems = data.memories[charId] || [];
+    var mems = (data.memories[charId] || []).slice(-(limit || 12));
     if (!mems.length) return '';
     return mems.map(function(m) {
         var d = new Date(m.time);
@@ -374,8 +416,119 @@ if (_data && _data.chars) {
             content = '[图片: ' + (m.imageDesc || '无描述') + ']';
         } else if (m.type === 'voice') {
             content = '[语音: ' + (m.content || '') + ']';
+        } else if (m.type === 'link') {
+            // 🔥 图片代理函数：绕过防盗链
+            function proxyImg(url) {
+                if (!url) return '';
+                if (url.indexOf('wsrv.nl') !== -1) return url; // 已经代理过的不重复
+                if (url.indexOf('data:') === 0) return url; // base64不代理
+                return 'https://wsrv.nl/?url=' + encodeURIComponent(url);
+            }
+
+            var linkContentText = '[分享了网页链接: ' + (m.linkTitle || m.linkUrl) + ']\n';
+            
+            // 全文 or 简介
+            // 检测是否是截图模式（被反爬拦截后的兜底）
+            var isScreenshot = m.linkFullText && m.linkFullText.indexOf('__SCREENSHOT__') === 0;
+            var screenshotData = isScreenshot ? m.linkFullText.replace('__SCREENSHOT__', '') : '';
+
+            if (isScreenshot) {
+                // 截图模式：把截图喂给AI的眼睛
+                linkContentText += '【注意】网页内容被反爬虫拦截，无法获取文字。以下附上网页截图，请根据截图内容回答用户。\n\n';
+            } else if (m.linkFullText && m.linkFullText.length > 20) {
+                var cleanText = m.linkFullText.slice(0, 4000);
+                linkContentText += '【网页正文内容】：\n' + cleanText + '\n\n';
+            } else if (m.linkDesc) {
+                linkContentText += '【网页简介】：\n' + m.linkDesc + '\n\n';
+            }
+            var userComment = typeof getDisplayContent === 'function' ? getDisplayContent(m) : (m.content || '');
+            linkContentText += '【用户附言】：' + (userComment || '（无）');
+
+            // 🌟 终极图片提取逻辑 🌟
+            var imgUrls = [];
+            
+            // 1. 封面图
+            if (m.linkImage) imgUrls.push(m.linkImage);
+            
+            // 1.5 如果是截图模式，截图作为第一张"图片"
+            var hasScreenshot = isScreenshot && screenshotData;
+            
+            // 2. 从全文中抠出所有配图链接（Markdown格式）
+            if (m.linkFullText) {
+                var imgRegex = /!\[.*?\]\((https?:\/\/[^\)]+)\)/g;
+                var match;
+                while ((match = imgRegex.exec(m.linkFullText)) !== null) {
+                    var imgUrl = match[1];
+                    // 过滤掉小图标、表情包等无意义的小图
+                    if (imgUrl.indexOf('emoji') === -1 && 
+                        imgUrl.indexOf('icon') === -1 && 
+                        imgUrl.indexOf('avatar') === -1 &&
+                        imgUrl.indexOf('.svg') === -1 &&
+                        imgUrls.indexOf(imgUrl) === -1) {
+                        imgUrls.push(imgUrl);
+                    }
+                }
+            }
+
+            // 3. 从全文中抠出纯URL格式的图片链接
+            if (m.linkFullText) {
+                var rawImgRegex = /(https?:\/\/[^\s\)]+\.(?:jpg|jpeg|png|webp|gif)(?:\?[^\s\)]*)?)/gi;
+                var rawMatch;
+                while ((rawMatch = rawImgRegex.exec(m.linkFullText)) !== null) {
+                    if (imgUrls.indexOf(rawMatch[1]) === -1) {
+                        imgUrls.push(rawMatch[1]);
+                    }
+                }
+            }
+
+            // 4. 最多让AI看前 6 张图片（平衡效果和费用）
+            imgUrls = imgUrls.slice(0, 6);
+
+            // 如果这是用户最后一条消息 且 有图片，启动视觉模式
+                        if (m.role === 'user' && i === history.length - 1 && (imgUrls.length > 0 || hasScreenshot)) {
+                var finalContent = [];
+               if (m.quoteContent) {
+    var qText2 = normalizeModelQuoteText(m.quoteContent);
+    if (qText2) {
+        if (m.quoteAnchorId) {
+            finalContent.push({ type: 'text', text: '<QUOTE id="' + m.quoteAnchorId + '">' + qText2 + '</QUOTE>' });
+        } else {
+            finalContent.push({ type: 'text', text: '<QUOTE>' + qText2 + '</QUOTE>' });
         }
-        if (m.quoteContent) content = '[引用"' + m.quoteContent + '"] ' + content;
+    }
+}
+                
+                finalContent.push({ type: 'text', text: linkContentText });
+                
+                // 🔥 如果有截图，先把截图喂给AI
+                if (hasScreenshot) {
+                    finalContent.push({ type: 'text', text: '\n[系统提示：以下是网页截图，请仔细观察截图中的所有文字和图片内容]' });
+                    finalContent.push({ type: 'image_url', image_url: { url: screenshotData, detail: 'high' } });
+                }
+                
+                if (imgUrls.length > 0) {
+                    finalContent.push({ type: 'text', text: '\n[以下是从网页提取的 ' + imgUrls.length + ' 张图片]' });
+                    imgUrls.forEach(function(imgUrl) {
+                        finalContent.push({ type: 'image_url', image_url: { url: proxyImg(imgUrl), detail: 'auto' } });
+                    });
+                }
+                
+                msgs.push({ role: 'user', content: finalContent });
+                return;
+            }
+
+            content = linkContentText;
+        }
+if (m.quoteContent) {
+    var qText = normalizeModelQuoteText(m.quoteContent);
+    if (qText) {
+        if (m.quoteAnchorId) {
+            content = '<QUOTE id="' + m.quoteAnchorId + '">' + qText + '</QUOTE>' + content;
+        } else {
+            content = '<QUOTE>' + qText + '</QUOTE>' + content;
+        }
+    }
+}
         if (content.trim()) msgs.push({ role: role, content: content });
     });
     // 提示AI可以引用最近的用户消息
@@ -558,12 +711,112 @@ function cleanAiTextHead(s) {
     // 不要 trim，保留换行
     return s;
 }
+function normalizeAiMsgText(s) {
+    s = String(s || '')
+        .replace(/\r\n/g, '\n')
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n[ \t]+\n/g, '\n')
+        .replace(/\n{2,}/g, '\n')
+        .trim();
+    return s;
+}
+
+function normalizeAiLinkQuery(title, desc, text) {
+    function clean(s) {
+        return String(s || '')
+            .replace(/\s+/g, ' ')
+            .replace(/[“”"'`]/g, '')
+            .trim();
+    }
+
+    var t = clean(title);
+    var d = clean(desc);
+    var x = clean(text);
+
+    // 太泛、太口语的内容尽量别拿来搜
+    var weakTexts = [
+        '你看这个', '你看看这个', '你听这个', '这个好好笑', '这个好看',
+        '哈哈哈', '笑死我了', '这首歌', '这个视频', '这个帖子', '这个链接'
+    ];
+
+    weakTexts.forEach(function(w) {
+        if (x === w) x = '';
+        if (d === w) d = '';
+    });
+
+    // 优先 title，其次 desc，正文只当补充
+    return [t, d, x].filter(Boolean).join(' ').trim();
+}
+
+function normalizeModelQuoteText(s) {
+    return String(s || '')
+        .replace(/<\/?QUOTE(?:\s+[^>]*)?>/gi, '')
+        .replace(/\r\n/g, '\n')
+        .replace(/\n+/g, ' ')
+        .trim();
+}
+function smartSplitPlainAiText(text) {
+    text = normalizeAiMsgText(text);
+    if (!text) return [];
+
+    // 有结构标签时不在这里乱拆，交给后面的 inline parser
+    if (/<(QUOTE|IMAGE|DESC|VOICE|STICKER|LINK|CALL|EMAIL|TRANSFER|MOMENT|LIKE|COMMENT|RECALL|PAT|SELFPAT)\b/i.test(text)) {
+        return [text];
+    }
+
+    // 1. 先按换行拆
+    var lines = text.split('\n').map(function(s) {
+        return normalizeAiMsgText(s);
+    }).filter(Boolean);
+
+    if (lines.length > 1) {
+        return lines;
+    }
+
+    // 2. 再按“短句聊天风”拆
+    // 只在文本不长、句子明显很碎时启用，避免把正常长文切烂
+    if (text.length <= 90) {
+        var parts = text.match(/[^。！？!?…]+[。！？!?…]*|.+$/g) || [];
+        parts = parts.map(function(s) { return normalizeAiMsgText(s); }).filter(Boolean);
+
+        var shortCount = parts.filter(function(s) { return s.length <= 18; }).length;
+        if (parts.length >= 3 && shortCount >= 2) {
+            return parts;
+        }
+    }
+
+    return [text];
+}
 
 function normalizeInlineTags(text) {
     text = String(text || '');
 
     // ===== QUOTE 修复 =====
     // 方括号变尖括号
+    // 兼容旧错误格式：[引用"xxx"]正文  ->  <QUOTE>xxx</QUOTE>正文
+    text = text.replace(
+        /(^|<SPLIT>|\n)\s*\[引用"([^"\]\n]{1,120})"\]\s*/gi,
+        function(all, prefix, inner) {
+            return prefix + '<QUOTE>' + inner.trim() + '</QUOTE>';
+        }
+    );
+
+    // 兼容旧错误格式：【引用：xxx】正文  ->  <QUOTE>xxx</QUOTE>正文
+    text = text.replace(
+        /(^|<SPLIT>|\n)\s*【引用[:：]?\s*([^】\n]{1,120})】\s*/gi,
+        function(all, prefix, inner) {
+            return prefix + '<QUOTE>' + inner.trim() + '</QUOTE>';
+        }
+    );
+
+    // 兼容旧错误格式：引用: xxx 正文（只在段首处理，避免误伤普通句子）
+    text = text.replace(
+        /(^|<SPLIT>|\n)\s*引用[:：]\s*([^\n]{1,80})\n/gi,
+        function(all, prefix, inner) {
+            return prefix + '<QUOTE>' + inner.trim() + '</QUOTE>';
+        }
+    );
     text = text.replace(/\[QUOTE\]/gi, '<QUOTE>')
                .replace(/\[\/QUOTE\]/gi, '</QUOTE>')
                .replace(/< QUOTE >/gi, '<QUOTE>')
@@ -612,46 +865,114 @@ function normalizeInlineTags(text) {
         }
     );
 
+    // LINK 标签修复
+    text = text.replace(/\[LINK\s/gi, '<LINK ').replace(/\[\/LINK\]/gi, '</LINK>');
+
     return text;
 }
-function resolveQuoteMeta(searchText, chatMsgs) {
-    searchText = String(searchText || '').trim();
-    if (!searchText) return null;
 
-    function norm(s) {
-        return String(s || '')
-            .replace(/\s+/g, '')
-            .replace(/[，。！？、,.!?'"“”‘’:：;；（）()\[\]【】\-—]/g, '')
-            .toLowerCase();
+function pickDisplayQuoteFragment(searchText, fullText) {
+    searchText = String(searchText || '').trim();
+    fullText = String(fullText || '').trim();
+
+    function tightenQuote(s) {
+        s = String(s || '').replace(/\s+/g, ' ').trim();
+        if (!s) return '';
+
+        // 先按标点拆，优先取最后一个有情绪点的短片段
+        var segs = s.split(/[，,。！？!?；;、\n]/).map(function(x) {
+            return String(x || '').trim();
+        }).filter(Boolean);
+
+        if (segs.length > 1) {
+            for (var i = segs.length - 1; i >= 0; i--) {
+                var seg = segs[i];
+                if (seg.length >= 2 && seg.length <= 8) {
+                    return seg;
+                }
+            }
+            // 没有合适短句，就取最后一段再压短
+            s = segs[segs.length - 1];
+        }
+
+        // 太长时，优先截尾巴，因为中文情绪点常在尾部
+        if (s.length > 8) {
+            var tail = s.slice(-6).replace(/^(啊|呀|呸|哼|欸|诶|唉|哈)+/, '').trim();
+            if (tail.length >= 2 && tail.length <= 8) return tail;
+
+            var tail2 = s.slice(-4).replace(/^(啊|呀|呸|哼|欸|诶|唉|哈)+/, '').trim();
+            if (tail2.length >= 2) return tail2;
+        }
+
+        if (s.length > 12) return s.slice(0, 12).trim();
+        return s;
     }
 
-    var key = norm(searchText);
+    if (!searchText) return tightenQuote(fullText);
+
+    // 先走精确匹配
+    var idx = fullText.indexOf(searchText);
+    if (idx >= 0) {
+        return tightenQuote(fullText.slice(idx, idx + searchText.length));
+    }
+
+    // 去空格后再试一次
+    var compactSearch = searchText.replace(/\s+/g, '');
+    var compactFull = fullText.replace(/\s+/g, '');
+    if (compactSearch && compactFull.indexOf(compactSearch) >= 0) {
+        return tightenQuote(searchText);
+    }
+
+    // 最后兜底：至少压成短片段
+    return tightenQuote(searchText);
+}
+
+function resolveQuoteMetaByAnchorId(anchorId, chatMsgs) {
+    anchorId = String(anchorId || '').trim();
+    if (!anchorId) return null;
 
     for (var i = chatMsgs.length - 1; i >= 0; i--) {
         var m = chatMsgs[i];
-        if (!m || m.recalled || m.type === 'sys' || m.role !== 'user' || !m.content) continue;
-
-        var c = String(m.content);
-        var cn = norm(c);
-
-        if (
-            c.indexOf(searchText) >= 0 ||
-            (searchText.length >= 3 && c.indexOf(searchText.slice(0, 5)) >= 0) ||
-            (key && cn.indexOf(key) >= 0) ||
-            (key && key.length >= 4 && cn.indexOf(key.slice(0, 4)) >= 0)
-        ) {
-            return {
-                quoteTime: m.time || 0,
-                quoteContent: m.type === 'image' ? '[图片]' : m.type === 'voice' ? '[语音]' : c.slice(0, 50)
-            };
+        var anchors = Array.isArray(m.quoteAnchors) ? m.quoteAnchors : [];
+        for (var j = 0; j < anchors.length; j++) {
+            var a = anchors[j];
+            if (a && a.id === anchorId) {
+                return {
+                    quoteTime: m.time,
+                    quoteContent: a.text || '',
+                    quoteMsgId: m.id || '',
+                    quoteAnchorId: a.id
+                };
+            }
         }
     }
 
-    // 兜底：匹配不到也展示引用文本（避免“后面几次不显示”）
-return {
-    quoteTime: Date.now(),
-    quoteContent: searchText.slice(0, 50)
-};
+    return null;
+}
+
+function resolveQuoteMeta(searchText, chatMsgs) {
+    searchText = normalizeModelQuoteText(searchText);
+    if (!searchText) return null;
+
+    for (var i = chatMsgs.length - 1; i >= 0; i--) {
+        var m = chatMsgs[i];
+        if (!m || m.recalled || m.type === 'sys') continue;
+
+        var anchors = Array.isArray(m.quoteAnchors) ? m.quoteAnchors : [];
+        for (var j = 0; j < anchors.length; j++) {
+            var a = anchors[j];
+            if (a && a.text === searchText) {
+                return {
+                    quoteTime: m.time || 0,
+                    quoteContent: a.text,
+                    quoteMsgId: m.id || '',
+                    quoteAnchorId: a.id || ''
+                };
+            }
+        }
+    }
+
+    return null;
 }
 
 function splitPromptDesc(prompt, desc) {
@@ -1146,11 +1467,9 @@ function checkAutoSummary(charId) {
 }
 function prepareRespText(rawText) {
     var text = String(rawText || '');
-    var hadStructuredTag = /<(VOICE|MOMENT|LIKE|COMMENT|DEL_MOMENT|ADDPLACE|MOVETO|SHARELOC|INVITE|TRANSFER|TRANSFER_ACCEPT|TRANSFER_REJECT|EMAIL|CALL|STICKER|IMAGE|RECALL|PAT|SELFPAT|relation|task|memory)\b/i.test(text);
+    var hadStructuredTag = /<(VOICE|MOMENT|LIKE|COMMENT|DEL_MOMENT|ADDPLACE|MOVETO|SHARELOC|INVITE|TRANSFER|TRANSFER_ACCEPT|TRANSFER_REJECT|EMAIL|CALL|STICKER|IMAGE|RECALL|PAT|SELFPAT|QUOTE|relation|task|memory)\b/i.test(text);
 
     text = text.replace(/`?INTERNAL STATE`?[\s\S]*$/i, '').trim();
-var firstTagIdx = text.search(/<(VOICE|MOMENT|LIKE|COMMENT|RECALL|IMAGE|DESC|QUOTE|STICKER|EMAIL|TRANSFER|PAT|SELFPAT)\b/i);
-    if (firstTagIdx > 0) text = text.slice(firstTagIdx);
     text = text.replace(/\n?---+\n?/g, '\n').trim();
     text = text.replace(/^(analysis|reasoning|thought process|internal monologue|draft)\s*:\s*/i, '').trim();
 
@@ -1223,10 +1542,11 @@ function _normKey(s) {
 
     function sendAiText(p, q, dly) {
         setTimeout(function() {
-            var content = cleanAiTextHead(p || '');
-            if (!content && q && q.quoteContent) return;
+            var content = normalizeAiMsgText(cleanAiTextHead(p || ''));
+            if (!content && q && q.quoteContent) {
+                content = '…';
+            }
             if (!content) return;
-
             // ===== 防引用重复：同内容+同引用 1.5秒内只发一次 =====
             var dedupKey = (q && q.quoteContent ? 'Q:' + q.quoteContent + '|' : '') + content.replace(/\s+/g, '');
             var now = Date.now();
@@ -1236,7 +1556,12 @@ function _normKey(s) {
             _sentKeys[dedupKey] = now;
 
             var msg = { role: 'ai', content: content, time: Date.now() };
-            if (q) { msg.quoteContent = q.quoteContent; msg.quoteTime = q.quoteTime; }
+if (q) {
+    msg.quoteContent = q.quoteContent;
+    msg.quoteTime = q.quoteTime;
+    msg.quoteMsgId = q.quoteMsgId || '';
+    msg.quoteAnchorId = q.quoteAnchorId || '';
+}
             appendMsgToChat(savedCharId, msg);
             if (typeof pushNotify === 'function') {
                 pushNotify(charName, content.slice(0, 60), { tag: 'chat-' + savedCharId + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) });
@@ -1245,107 +1570,153 @@ function _normKey(s) {
     }
 
     function dispatchInline(part, startDelay) {
-        var delayX = startDelay || 0;
-        var tokens = [];
-        var re = /<QUOTE>([\s\S]*?)<\/QUOTE>|<IMAGE>([\s\S]*?)<\/IMAGE>\s*(?:<DESC>([\s\S]*?)<\/DESC>)?|(\|\|\|PAT\|\|\|)/gi;
-        var idx = 0, m;
+    var delayX = startDelay || 0;
+    var tokens = [];
+    var re = /<QUOTE(?:\s+id="([^"]+)")?>([\s\S]*?)<\/QUOTE>|<IMAGE>([\s\S]*?)<\/IMAGE>\s*(?:<DESC>([\s\S]*?)<\/DESC>)?|(\|\|\|PAT\|\|\|)/gi;
+    var idx = 0, m;
 
-        while ((m = re.exec(part)) !== null) {
-            if (m.index > idx) {
-                var plain = part.slice(idx, m.index).replace(/<\/?(QUOTE|IMAGE|DESC)>/gi, '').trim();
-                if (plain) tokens.push({ type: 'text', content: plain });
-            }
-            if (m[1] != null) tokens.push({ type: 'quote', content: m[1] });
-            else if (m[2] != null) tokens.push({ type: 'image', prompt: m[2], desc: m[3] || '' });
-            else if (m[4] != null) tokens.push({ type: 'pat' });
-            idx = re.lastIndex;
+    while ((m = re.exec(part)) !== null) {
+        if (m.index > idx) {
+            var plain = part.slice(idx, m.index)
+                .replace(/<\/?QUOTE(?:\s+[^>]*)?>/gi, '')
+                .replace(/<\/?(IMAGE|DESC)>/gi, '')
+                .trim();
+            if (plain) tokens.push({ type: 'text', content: plain });
         }
 
-        var tail = part.slice(idx).replace(/<\/?(QUOTE|IMAGE|DESC)>/gi, '').trim();
-        if (tail) tokens.push({ type: 'text', content: tail });
+        if (m[2] != null) {
+            tokens.push({ type: 'quote', id: m[1] || '', content: m[2] });
+        } else if (m[3] != null) {
+            tokens.push({ type: 'image', prompt: m[3], desc: m[4] || '' });
+        } else if (m[5] != null) {
+            tokens.push({ type: 'pat' });
+        }
 
-        var i = 0;
-        var pendingText = '';
+        idx = re.lastIndex;
+    }
 
-        while (i < tokens.length) {
-            var tk = tokens[i];
+    var tail = part.slice(idx)
+        .replace(/<\/?QUOTE(?:\s+[^>]*)?>/gi, '')
+        .replace(/<\/?(IMAGE|DESC)>/gi, '')
+        .trim();
 
-            if (tk.type === 'quote') {
-                // quote前的text不单独发，合并到quote消息里
-                var quoteMeta = resolveQuoteMeta(tk.content, chatMsgsForQuote);
-                var afterText = '';
-                if (i + 1 < tokens.length && tokens[i + 1].type === 'text') {
-                    i++;
-                    afterText = tokens[i].content;
-                }
-                var combined = (pendingText + afterText).trim();
+    if (tail) tokens.push({ type: 'text', content: tail });
+
+    var i = 0;
+    var pendingText = '';
+
+    while (i < tokens.length) {
+        var tk = tokens[i];
+
+        if (tk.type === 'quote') {
+            var quoteMeta = null;
+
+if (tk.id) {
+    quoteMeta = resolveQuoteMetaByAnchorId(tk.id, chatMsgsForQuote);
+
+    if (quoteMeta) {
+        var modelQuoteText = normalizeModelQuoteText(tk.content || '');
+        var exactQuoteText = normalizeModelQuoteText(quoteMeta.quoteContent || '');
+        if (modelQuoteText && exactQuoteText && modelQuoteText !== exactQuoteText) {
+            pWarn('quote-mismatch', {
+                id: tk.id,
+                model: modelQuoteText,
+                exact: exactQuoteText
+            });
+        }
+    }
+} else {
+    quoteMeta = resolveQuoteMeta(tk.content, chatMsgsForQuote);
+}
+
+            var beforeText = normalizeAiMsgText(cleanAiTextHead(pendingText || ''));
+            pendingText = '';
+
+            if (beforeText) {
+                sendAiText(beforeText, null, delayX);
+                delayX += 280 + Math.min(beforeText.length * 22, 700);
+            }
+
+            var afterText = '';
+            if (i + 1 < tokens.length && tokens[i + 1].type === 'text') {
+                i++;
+                afterText = normalizeAiMsgText(cleanAiTextHead(tokens[i].content || ''));
+            }
+
+            if (afterText || quoteMeta) {
+                sendAiText(afterText || '', quoteMeta, delayX);
+                delayX += 280 + Math.min((afterText || '').length * 22, 700);
+            }
+
+        } else if (tk.type === 'text') {
+            if (i + 1 < tokens.length && tokens[i + 1].type === 'quote') {
+                pendingText += tk.content;
+            } else {
+                var fullText = normalizeAiMsgText(cleanAiTextHead(pendingText + tk.content));
                 pendingText = '';
-                if (combined || quoteMeta) {
-                    sendAiText(combined || '', quoteMeta, delayX);
-                    delayX += 280 + Math.min((combined || '').length * 22, 700);
-                }
-
-            } else if (tk.type === 'text') {
-                // 偷看下一个是不是quote，是的话先暂存不发
-                if (i + 1 < tokens.length && tokens[i + 1].type === 'quote') {
-                    pendingText += tk.content;
-                } else {
-                    var fullText = pendingText + tk.content;
-                    pendingText = '';
+                if (fullText) {
                     sendAiText(fullText, null, delayX);
                     delayX += 280 + Math.min(fullText.length * 22, 700);
                 }
-
-            } else if (tk.type === 'image') {
-                // 先flush暂存的text
-                if (pendingText) {
-                    sendAiText(pendingText, null, delayX);
-                    delayX += 280 + Math.min(pendingText.length * 22, 700);
-                    pendingText = '';
-                }
-                if (D.settings.polliOn) {
-                    (function(prompt, desc, dly) {
-                        setTimeout(function() {
-                            var sp = splitPromptDesc(prompt, desc);
-                            if (!sp.prompt) return;
-                            appendMsgToChat(savedCharId, {
-                                role: 'ai',
-                                type: 'image',
-                                imageUrl: buildImageUrlByPrompt(sp.prompt),
-                                imageDesc: sp.desc,
-                                time: Date.now()
-                            });
-                        }, dly);
-                    })(tk.prompt, tk.desc, delayX);
-                    delayX += 220;
-                }
-
-            } else if (tk.type === 'pat') {
-                // 先flush暂存的text
-                if (pendingText) {
-                    sendAiText(pendingText, null, delayX);
-                    delayX += 280 + Math.min(pendingText.length * 22, 700);
-                    pendingText = '';
-                }
-                (function(dly) {
-                    setTimeout(function() {
-                        appendMsgToChat(savedCharId, { role: 'sys', type: 'sys', content: charName + ' 拍了拍 ' + (acc ? acc.nick : '你'), time: Date.now() });
-                    }, dly);
-                })(delayX);
-                delayX += 200;
             }
-            i++;
+
+        } else if (tk.type === 'image') {
+            if (pendingText) {
+                sendAiText(pendingText, null, delayX);
+                delayX += 280 + Math.min(pendingText.length * 22, 700);
+                pendingText = '';
+            }
+
+            if (D.settings.polliOn) {
+                (function(prompt, desc, dly) {
+                    setTimeout(function() {
+                        var sp = splitPromptDesc(prompt, desc);
+                        if (!sp.prompt) return;
+                        appendMsgToChat(savedCharId, {
+                            role: 'ai',
+                            type: 'image',
+                            imageUrl: buildImageUrlByPrompt(sp.prompt),
+                            imageDesc: sp.desc,
+                            time: Date.now()
+                        });
+                    }, dly);
+                })(tk.prompt, tk.desc, delayX);
+
+                delayX += 220;
+            }
+
+        } else if (tk.type === 'pat') {
+            if (pendingText) {
+                sendAiText(pendingText, null, delayX);
+                delayX += 280 + Math.min(pendingText.length * 22, 700);
+                pendingText = '';
+            }
+
+            (function(dly) {
+                setTimeout(function() {
+                    appendMsgToChat(savedCharId, {
+                        role: 'sys',
+                        type: 'sys',
+                        content: charName + ' 拍了拍 ' + (acc ? acc.nick : '你'),
+                        time: Date.now()
+                    });
+                }, dly);
+            })(delayX);
+
+            delayX += 200;
         }
 
-        // flush最后残留的text
-        if (pendingText) {
-            sendAiText(pendingText, null, delayX);
-            delayX += 280 + Math.min(pendingText.length * 22, 700);
-            pendingText = '';
-        }
-
-        return delayX;
+        i++;
     }
+
+    if (pendingText) {
+        sendAiText(pendingText, null, delayX);
+        delayX += 280 + Math.min(pendingText.length * 22, 700);
+        pendingText = '';
+    }
+
+    return delayX;
+}
 
     if (!text || !text.trim()) {
         if (hadStructuredTag) return 0;
@@ -1359,23 +1730,20 @@ function _normKey(s) {
         var d0 = 0;
         parts.forEach(function(p) { d0 = dispatchInline(p, d0); });
         totalDelay = d0;
-    } else if (D.settings.segment && /\n/.test(text)) {
-        // 兜底：AI没用<SPLIT>但用了换行，按换行拆成多条
-        var lines = text.split('\n').filter(function(p) { return p && p.trim(); });
-        if (lines.length > 1) {
-            var d0 = 0;
-            lines.forEach(function(p) { d0 = dispatchInline(p, d0); });
-            totalDelay = d0;
-        } else {
-            totalDelay = dispatchInline(text, 0);
-        }
+    } else if (D.settings.segment) {
+        var autoParts = smartSplitPlainAiText(text);
+        var d1 = 0;
+        autoParts.forEach(function(p) {
+            d1 = dispatchInline(p, d1);
+        });
+        totalDelay = d1;
     } else {
         totalDelay = dispatchInline(text, 0);
     }
 
     if (typeof detectEmailInquiry === 'function') {
         var plainForDetect = text
-            .replace(/<QUOTE>[\s\S]*?<\/QUOTE>/gi, '')
+            .replace(/<QUOTE(?:\s+id="[^"]+")?>[\s\S]*?<\/QUOTE>/gi, '')
             .replace(/<IMAGE>[\s\S]*?<\/IMAGE>/gi, '')
             .replace(/<DESC>[\s\S]*?<\/DESC>/gi, '')
             .replace(/\|\|\|PAT\|\|\|/g, '')
@@ -1659,6 +2027,33 @@ function processResp(text) {
         }
     });
     text = text.replace(/<STICKER>[\s\S]*?<\/STICKER>/g, '');
+    // ===== 链接卡片处理 =====
+    var linkRegex = /<LINK\s+url="([^"]+)"\s+title="([^"]*)"\s*(?:desc="([^"]*)")?\s*>([\s\S]*?)<\/LINK>/gi;
+    var linkMatch;
+    while ((linkMatch = linkRegex.exec(text)) !== null) {
+        var lUrl = linkMatch[1].trim();
+        var lTitle = linkMatch[2].trim();
+        var lDesc = (linkMatch[3] || '').trim();
+        var lText = linkMatch[4].trim();
+        var isVirtual = true; // 所有AI链接都走搜索，不信任AI编造的URL
+        lUrl = 'javascript:void(0)';
+
+var linkMsg = {
+    id: genId('link'),
+    role: 'ai',
+    type: 'link',
+    content: lText,
+    linkUrl: lUrl,
+    linkTitle: lTitle || '网页链接',
+    linkDesc: lDesc,
+    linkFavicon: '',
+    linkImage: '',
+    linkVirtual: isVirtual,
+    time: Date.now()
+};
+appendMsgToChat(savedCharId, linkMsg);
+    }
+    text = text.replace(/<LINK\s+url="[^"]+"\s+title="[^"]*"\s*(?:desc="[^"]*")?\s*>[\s\S]*?<\/LINK>/gi, '');
     // --- 结构化标签处理结束 ---
 
     pLog('before-inline', { len: text.length, tags: countTags(text) });

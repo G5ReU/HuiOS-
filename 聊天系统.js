@@ -1,4 +1,9 @@
 // ===== 风控接入（最小版）=====
+(function(){
+    var s = document.createElement('style');
+    s.textContent = '.msg-card-type{background:transparent !important;padding:0 !important;}.msg-card-type .msg-bubble-wrap{background:transparent !important;padding:0 !important;}';
+    document.head.appendChild(s);
+})();
 const RISK_API = "https://huios-push.onrender.com";
 
 function getRiskUserId() {
@@ -396,9 +401,10 @@ function openChat(id) {
     var data = getAccData();
     curChar = data.chars.find(function(c) { return c.id === id; });
     if (!curChar) return;
-    
-      lastInteract[id] = Date.now();
-    unreadCounts[id] = 0;
+    backfillChatMsgMeta(id);
+    data = getAccData();
+
+    lastInteract[id] = Date.now();
     
     $('crName').textContent = curChar.displayName;
     $('crStatus').textContent = '在线';
@@ -525,7 +531,7 @@ function _renderMsgRaw(m, idx) {
     var useAvatarLayout = (m.role === 'ai' && showAiAvatar) || (m.role === 'user' && showUserAvatar);
     
     if (useAvatarLayout) {
-        var h = '<div class="msg-with-avatar '+m.role+' '+bubbleClass+'" data-idx="'+idx+'">';
+        var h = '<div class="msg-with-avatar '+m.role+' '+bubbleClass+'" data-idx="'+idx+'" data-msgid="'+esc(m.id || '')+'">';
         
         if (m.role === 'ai' && showAiAvatar) {
             if (needAiAvatar) {
@@ -545,10 +551,12 @@ function _renderMsgRaw(m, idx) {
             }
         }
         
-        h += '<div class="msg-bubble-wrap" data-msgidx="'+idx+'" oncontextmenu="showMsgMenu(event,'+idx+')">';
+        var isCard2 = m.type === 'link' || m.type === 'location' || m.type === 'invite' || m.type === 'call' || m.type === 'call_invite' || m.type === 'transfer';
+        h += '<div class="msg-bubble-wrap' + (isCard2 ? ' msg-card-type' : '') + '" data-msgidx="'+idx+'" oncontextmenu="showMsgMenu(event,'+idx+')">';
         
         if (m.quoteContent) {
-            h += '<div class="msg-quote" onclick="jumpToQuoteByTime('+(m.quoteTime||0)+')">'+esc(m.quoteContent.slice(0,30))+(m.quoteContent.length>30?'...':'')+'</div>';
+            var quoteJump = getQuoteJumpAction(m);
+            h += '<div class="msg-quote" onclick="' + quoteJump + '">' + esc(m.quoteContent.slice(0,30)) + (m.quoteContent.length > 30 ? '...' : '') + '</div>';
         }
         
         h += '<div class="msg-content-wrap">' + renderMsgContent(m, idx) + '</div>';
@@ -556,12 +564,14 @@ function _renderMsgRaw(m, idx) {
         return h;
     }
     
-    var cls = 'msg ' + m.role + ' ' + bubbleClass;
-    var h = '<div class="'+cls+'" data-idx="'+idx+'" data-msgidx="'+idx+'" oncontextmenu="showMsgMenu(event,'+idx+')">';
+    var isCard = m.type === 'link' || m.type === 'location' || m.type === 'invite' || m.type === 'call' || m.type === 'call_invite' || m.type === 'transfer';
+    var cls = 'msg ' + m.role + ' ' + bubbleClass + (isCard ? ' msg-card-type' : '');
+    var h = '<div class="'+cls+'" data-idx="'+idx+'" data-msgidx="'+idx+'" data-msgid="'+esc(m.id || '')+'" oncontextmenu="showMsgMenu(event,'+idx+')">';
     
-    if (m.quoteContent) {
-        h += '<div class="msg-quote" onclick="jumpToQuoteByTime('+(m.quoteTime||0)+')">'+esc(m.quoteContent.slice(0,30))+(m.quoteContent.length>30?'...':'')+'</div>';
-    }
+        if (m.quoteContent) {
+            var quoteJump = getQuoteJumpAction(m);
+            h += '<div class="msg-quote" onclick="' + quoteJump + '">' + esc(m.quoteContent.slice(0,30)) + (m.quoteContent.length > 30 ? '...' : '') + '</div>';
+        }
     
     h += '<div class="msg-content-wrap">' + renderMsgContent(m, idx) + '</div>';
     h += '</div>';
@@ -697,8 +707,21 @@ callHtml += '<button ontouchstart="event.stopPropagation()" onclick="rejectAICal
         h += '<div class="voice-text" id="vt'+idx+'">'+esc(m.content)+'</div>';
     } else if (m.type === 'email_forward') {
         h += typeof renderEmailForwardBubble === 'function' ? renderEmailForwardBubble(m) : '<div class="msg-bubble">📧 ' + esc(m.emailSubject || '邮件') + '</div>';
+               } else if (m.type === 'link') {
+        var linkDisplayText = getDisplayContent(m);
+        if (linkDisplayText) h += '<div class="msg-bubble" style="margin-bottom:6px">' + esc(linkDisplayText) + '</div>';
+        if (typeof renderLinkCard === 'function') {
+            var linkCopy = {};
+            for (var k in m) linkCopy[k] = m[k];
+            linkCopy.content = '';
+            h += renderLinkCard(linkCopy);
+        } else {
+            h += '<div class="msg-bubble">[链接: ' + esc(m.linkUrl) + ']</div>';
+        }
     } else {
-        h += '<div class="msg-bubble">'+esc(m.content)+'</div>';
+        if (m.content) {
+            h += '<div class="msg-bubble">'+esc(m.content)+'</div>';
+        }
     }
     return h;
 }
@@ -783,11 +806,22 @@ function doPatByType(type) {
     }
     appendMsg({ role: 'sys', type: 'sys', content: content, time: Date.now() });
 }
-    function appendMsgToChat(charId, msg) {
+function appendMsgToChat(charId, msg) {
+    if (msg && msg.role === 'ai' && typeof msg.content === 'string' && !msg.type) {
+        msg.content = String(msg.content)
+            .replace(/\r\n/g, '\n')
+            .replace(/[\u200B-\u200D\uFEFF]/g, '')
+            .replace(/[ \t]+\n/g, '\n')
+            .replace(/\n[ \t]+\n/g, '\n')
+            .replace(/\n{2,}/g, '\n')
+            .trim();
+    }
+
     if (typeof exitMsgBatchMode === 'function' && isMsgBatchMode) exitMsgBatchMode();
     var data = getAccData();
     if (!charId || !data || !data.chats[charId]) return -1;
 
+    msg = prepareMsgForStorage(msg);
     data.chats[charId].push(msg);
     save();
 
@@ -847,14 +881,32 @@ function doPatByType(type) {
 
     // 统一触发自动总结（关键）
     if (typeof checkAutoSummary === 'function') checkAutoSummary(charId);
+        if (msg.type === 'link') {
+        if (msg.role === 'ai' && !msg._aiVerified) {
+            setTimeout(function() { processAiLinkMsg(charId, idx); }, 200);
+        } else if (msg.role === 'user' && msg.linkUrl && !msg._userFetched) {
+            setTimeout(function() { processUserLinkMsg(charId, idx); }, 200);
+        }
+    }
     return idx;
 }
 function appendMsg(msg) {
+    if (msg && msg.role === 'ai' && typeof msg.content === 'string' && !msg.type) {
+        msg.content = String(msg.content)
+            .replace(/\r\n/g, '\n')
+            .replace(/[\u200B-\u200D\uFEFF]/g, '')
+            .replace(/[ \t]+\n/g, '\n')
+            .replace(/\n[ \t]+\n/g, '\n')
+            .replace(/\n{2,}/g, '\n')
+            .trim();
+    }
+
     if (typeof exitMsgBatchMode === 'function' && isMsgBatchMode) exitMsgBatchMode();
     var data = getAccData();
     var charId = curChar ? curChar.id : respondingCharId;
     if (!charId || !data || !data.chats[charId]) return -1;
 
+    msg = prepareMsgForStorage(msg);
     data.chats[charId].push(msg);
     save();
 
@@ -908,7 +960,20 @@ function appendMsg(msg) {
     }
 
     if (typeof checkAutoSummary === 'function') checkAutoSummary(charId);
+    if (msg.type === 'link') {
+        if (msg.role === 'ai' && !msg._aiVerified) {
+            setTimeout(function() { processAiLinkMsg(charId, idx); }, 200);
+        } else if (msg.role === 'user' && msg.linkUrl && !msg._userFetched) {
+            setTimeout(function() { processUserLinkMsg(charId, idx); }, 200);
+        }
+    }
     return idx;
+}
+
+function checkAutoSummary(charId) {
+    setTimeout(function() {
+        if (typeof autoSummaryIfNeeded === 'function') autoSummaryIfNeeded(charId);
+    }, 500);
 }
 
 function checkAutoSummary(charId) {
@@ -1081,6 +1146,7 @@ function showMsgMenu(e, idx) {
         h += '<div class="msg-menu-item" onclick="enterMsgBatchMode()">多选</div>';
     } else {
         h += '<div class="msg-menu-item" onclick="copyMsg()">复制</div>';
+        if (msg.type === 'link' && msg.linkUrl) h += '<div class="msg-menu-item" onclick="copyLinkUrl()">复制链接</div>';
         h += '<div class="msg-menu-item" onclick="quoteThisMsg()">引用</div>';
         h += '<div class="msg-menu-item" onclick="enterMsgBatchMode()">多选</div>';
         if (msg.type === 'image') h += '<div class="msg-menu-item" onclick="retryRecognizeImage()">重新识图</div>';
@@ -1116,6 +1182,7 @@ function showMsgMenuAt(x, y, idx) {
         h += '<div class="msg-menu-item" onclick="enterMsgBatchMode()">多选</div>';
     } else {
         h += '<div class="msg-menu-item" onclick="copyMsg()">复制</div>';
+                if (msg.type === 'link' && msg.linkUrl) h += '<div class="msg-menu-item" onclick="copyLinkUrl()">复制链接</div>';
         h += '<div class="msg-menu-item" onclick="quoteThisMsg()">引用</div>';
         h += '<div class="msg-menu-item" onclick="enterMsgBatchMode()">多选</div>';
         if (msg.type === 'image') h += '<div class="msg-menu-item" onclick="retryRecognizeImage()">重新识图</div>';
@@ -1141,8 +1208,225 @@ function copyMsg() {
     var data = getAccData();
     var charId = curChar ? curChar.id : respondingCharId;
     var msg = data.chats[charId][selectedMsgIdx];
-    if (msg) navigator.clipboard.writeText(msg.content || msg.imageDesc || '').then(function() { toast('已复制'); });
+    if (msg) {
+        var text = msg.type === 'link' ? getDisplayContent(msg) : (msg.content || msg.imageDesc || '');
+        navigator.clipboard.writeText(text).then(function() { toast('已复制'); });
+    }
     hideMsgMenu();
+}
+
+function escJsStr(s) {
+    return String(s || '')
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'");
+}
+
+function getMsgPlainTextForQuote(msg) {
+    if (!msg) return '';
+    if (msg.type === 'link') return getDisplayContent(msg) || msg.linkTitle || msg.linkDesc || '';
+    if (msg.type === 'image') return msg.imageDesc || '[图片]';
+    if (msg.type === 'voice') return msg.content || '[语音]';
+    if (msg.type === 'sticker') return msg.stickerDesc || '[表情包]';
+    if (msg.type === 'location') return msg.content || msg.placeName || '[位置]';
+    if (msg.type === 'invite') return msg.content || msg.placeName || '[邀请]';
+    if (msg.type === 'transfer') return msg.content || '[转账]';
+    return msg.content || '';
+}
+
+function buildQuoteAnchorsFromText(text, msgId, msgTime) {
+    text = String(text || '').replace(/\r\n/g, '\n').trim();
+    if (!text) return [];
+
+    var anchors = [];
+    var seen = {};
+
+    function addExact(t) {
+        t = String(t || '').replace(/\r\n/g, '\n').trim();
+        if (!t) return;
+        if (seen[t]) return;
+        seen[t] = true;
+        anchors.push({
+            id: genId('qa'),
+            msgId: msgId,
+            time: msgTime,
+            text: t
+        });
+    }
+
+    addExact(text);
+
+    var sentenceSegs = text.match(/[^。！？!?；;…\n]+[。！？!?；;…]?/g) || [];
+    sentenceSegs.forEach(function(seg) {
+        seg = String(seg || '').trim();
+        if (seg && seg.length <= 60) addExact(seg);
+    });
+
+    var commaSegs = text.match(/[^，,、\n]+/g) || [];
+    commaSegs.forEach(function(seg) {
+        seg = String(seg || '').trim();
+        if (seg && seg.length >= 2 && seg.length <= 20) addExact(seg);
+    });
+
+    return anchors.slice(0, 12);
+}
+
+function prepareMsgForStorage(msg) {
+    msg = msg || {};
+
+    if (!msg.id) msg.id = genId('msg');
+    if (!msg.time) msg.time = Date.now();
+
+    if (!Array.isArray(msg.quoteAnchors)) {
+        var plain = getMsgPlainTextForQuote(msg);
+        msg.quoteAnchors = buildQuoteAnchorsFromText(plain, msg.id, msg.time);
+    } else {
+        msg.quoteAnchors.forEach(function(a) {
+            if (!a.id) a.id = genId('qa');
+            if (!a.msgId) a.msgId = msg.id;
+            if (!a.time) a.time = msg.time;
+        });
+    }
+
+    return msg;
+}
+
+function backfillChatMsgMeta(charId) {
+    var data = getAccData();
+    if (!data || !data.chats || !data.chats[charId]) return;
+
+    var changed = false;
+    var msgs = data.chats[charId];
+
+    msgs.forEach(function(msg) {
+        if (!msg.id || !Array.isArray(msg.quoteAnchors)) {
+            prepareMsgForStorage(msg);
+            changed = true;
+        }
+
+        if (msg.quoteMsgId && !msg.quoteTime) {
+            var ref = msgs.find(function(x) { return x.id === msg.quoteMsgId; });
+            if (ref) {
+                msg.quoteTime = ref.time;
+                changed = true;
+            }
+        }
+    });
+
+    if (changed) save();
+}
+
+function pickBestQuoteAnchor(msg) {
+    var anchors = (msg && msg.quoteAnchors) || [];
+    if (!anchors.length) return null;
+
+    for (var i = 0; i < anchors.length; i++) {
+        var t = anchors[i].text || '';
+        if (t.length >= 2 && t.length <= 6) return anchors[i];
+    }
+
+    return anchors[anchors.length - 1] || anchors[0];
+}
+
+function getQuoteJumpAction(msg) {
+    if (msg.quoteMsgId || msg.quoteAnchorId) {
+        return "jumpToQuoteAnchor('" + escJsStr(msg.quoteMsgId || '') + "','" + escJsStr(msg.quoteAnchorId || '') + "')";
+    }
+    return 'jumpToQuoteByTime(' + (msg.quoteTime || 0) + ')';
+}
+
+function findQuoteAnchorInChat(charId, anchorId) {
+    var data = getAccData();
+    var msgs = (data.chats[charId] || []);
+
+    for (var i = 0; i < msgs.length; i++) {
+        var m = msgs[i];
+        var anchors = m.quoteAnchors || [];
+        for (var j = 0; j < anchors.length; j++) {
+            if (anchors[j] && anchors[j].id === anchorId) {
+                return {
+                    idx: i,
+                    msg: m,
+                    anchor: anchors[j]
+                };
+            }
+        }
+    }
+    return null;
+}
+
+function jumpToQuoteAnchor(msgId, anchorId) {
+    var data = getAccData();
+    var charId = curChar ? curChar.id : null;
+    if (!charId) return toast('请先打开聊天');
+
+    var msgs = data.chats[charId] || [];
+    var targetIdx = -1;
+    var anchorText = '';
+
+    if (msgId) {
+        for (var i = 0; i < msgs.length; i++) {
+            if (msgs[i].id === msgId) {
+                targetIdx = i;
+                break;
+            }
+        }
+    }
+
+    if (targetIdx < 0 && anchorId) {
+        var found = findQuoteAnchorInChat(charId, anchorId);
+        if (found) {
+            targetIdx = found.idx;
+            msgId = found.msg.id;
+            anchorText = found.anchor.text || '';
+        }
+    } else if (targetIdx >= 0 && anchorId) {
+        var msg = msgs[targetIdx];
+        var anchors = msg.quoteAnchors || [];
+        for (var k = 0; k < anchors.length; k++) {
+            if (anchors[k].id === anchorId) {
+                anchorText = anchors[k].text || '';
+                break;
+            }
+        }
+    }
+
+    if (targetIdx < 0) return toast('原消息已被删除');
+
+    var el = document.querySelector('[data-idx="' + targetIdx + '"]');
+    if (!el) return toast('消息不在当前视图中');
+
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('highlight');
+    setTimeout(function() { el.classList.remove('highlight'); }, 2000);
+
+    if (anchorText) {
+        toast('引用：' + anchorText);
+    }
+}
+
+function getRecentQuoteAnchorsForAI(charId, limit) {
+    limit = limit || 30;
+    var data = getAccData();
+    var msgs = (data.chats[charId] || []).slice(-40);
+    var list = [];
+
+    msgs.forEach(function(m) {
+        if (!m || m.type === 'sys' || m.recalled) return;
+
+        (m.quoteAnchors || []).forEach(function(a) {
+            if (a && a.id && a.text) {
+                list.push({
+                    id: a.id,
+                    text: a.text,
+                    msgId: m.id,
+                    time: m.time,
+                    role: m.role
+                });
+            }
+        });
+    });
+
+    return list.slice(-limit);
 }
 
 function quoteThisMsg() {
@@ -1152,7 +1436,16 @@ function quoteThisMsg() {
     if (msg) {
         quotedMsg = msg;
         quotedIdx = selectedMsgIdx;
-        var text = msg.type === 'image' ? '[图片]' : msg.type === 'voice' ? '[语音]' : msg.type === 'sticker' ? '[表情包: ' + (msg.stickerDesc || '') + ']' : (msg.content || '').slice(0, 30);
+
+        var bestAnchor = pickBestQuoteAnchor(msg);
+        var rawText = msg.type === 'link' ? getDisplayContent(msg) : (msg.content || '');
+        var text = '';
+
+        if (msg.type === 'image') text = '[图片]';
+        else if (msg.type === 'voice') text = '[语音]';
+        else if (msg.type === 'sticker') text = '[表情包: ' + (msg.stickerDesc || '') + ']';
+        else text = bestAnchor ? bestAnchor.text : rawText.slice(0, 30);
+
         $('quotePreviewText').textContent = text;
         $('quotePreview').classList.add('show');
     }
@@ -1192,29 +1485,168 @@ function deleteMsg() {
     data.chats[charId].splice(selectedMsgIdx, 1);
     save(); renderMsgs(false); hideMsgMenu(); toast('已删除');
 }
+
+// ========== 链接抓取进度面板 ==========
+function showFetchProgress() {
+    var old = document.getElementById('fetchProgressPanel');
+    if (old) old.remove();
+    var panel = document.createElement('div');
+    panel.id = 'fetchProgressPanel';
+    panel.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);width:min(340px,90vw);background:rgba(0,0,0,0.6);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-radius:14px;padding:14px 16px;z-index:99999;color:white;font-size:13px;box-shadow:0 8px 30px rgba(0,0,0,0.3);transition:opacity 0.3s;';
+    panel.innerHTML = '<div style="font-weight:600;margin-bottom:8px">🔗 正在抓取网页内容...</div><div id="fetchProgressList"></div>';
+    document.body.appendChild(panel);
+}
+
+function updateFetchProgress(idx, name, status, detail) {
+    var list = document.getElementById('fetchProgressList');
+    if (!list) return;
+    var icon = status === 'loading' ? '⏳' : status === 'ok' ? '✅' : '❌';
+    var color = status === 'ok' ? '#4CAF50' : status === 'fail' ? '#FF6B6B' : '#FFD54F';
+    var detailHtml = detail ? ' <span style="color:#999;font-size:11px">(' + detail + ')</span>' : '';
+    
+    var existing = document.getElementById('fp_row_' + idx);
+    if (existing) {
+        existing.innerHTML = '<span style="color:' + color + '">' + icon + ' ' + name + '</span>' + detailHtml;
+    } else {
+        var row = document.createElement('div');
+        row.id = 'fp_row_' + idx;
+        row.style.cssText = 'padding:3px 0;';
+        row.innerHTML = '<span style="color:' + color + '">' + icon + ' ' + name + '</span>' + detailHtml;
+        list.appendChild(row);
+    }
+}
+
+function closeFetchProgress(success, length) {
+    var panel = document.getElementById('fetchProgressPanel');
+    if (!panel) return;
+    var list = document.getElementById('fetchProgressList');
+    if (list) {
+        var msg = success 
+            ? '<div style="color:#4CAF50;font-weight:600;margin-top:6px">✨ 抓取成功！共 ' + length + ' 字</div>'
+            : '<div style="color:#FF6B6B;font-weight:600;margin-top:6px">😢 全部失败，将使用有限信息</div>';
+        list.insertAdjacentHTML('beforeend', msg);
+    }
+    setTimeout(function() {
+        if (panel) { panel.style.opacity = '0'; setTimeout(function() { if (panel.parentNode) panel.remove(); }, 300); }
+    }, success ? 2000 : 3000);
+}
+
 async function sendMsg() {
     var input = $('msgInput');
     var text = input.value.trim();
     if (!text || !curChar) return;
     if (!D.api.key) return toast('请先配置API');
 
-    // 用缓存状态，不等待网络，发消息零延迟
     if (window.__RISK_BANNED__) {
         toast(window.__RISK_BAN_MSG__ || '账号已被封禁');
         return;
     }
 
-    var msg = { role: 'user', content: text, time: Date.now() };
-    if (quotedMsg) {
-        msg.quoteTime = quotedMsg.time;
-        msg.quoteContent = quotedMsg.type === 'image' ? '[图片]' :
-                           quotedMsg.type === 'voice' ? '[语音]' :
-                           quotedMsg.type === 'sticker' ? '[表情包: ' + (quotedMsg.stickerDesc || '表情') + ']' :
-                           (quotedMsg.content || '').slice(0, 50);
+    var urls = typeof detectUrls === 'function' ? detectUrls(text) : [];
+    var msg;
+
+    if (urls.length > 0) {
+        var textOnly = text;
+        urls.forEach(function(u) { textOnly = textOnly.replace(u, '').trim(); });
+        var url = urls[0];
+        var domain = '';
+        try { domain = new URL(url).hostname; } catch(e) { domain = url; }
+
+        msg = {
+            id: genId('link'),
+            role: 'user',
+            type: 'link',
+            content: textOnly,
+            linkUrl: url,
+            linkTitle: domain,
+            linkDesc: '正在加载网页...',
+            linkFavicon: 'https://www.google.com/s2/favicons?domain=' + domain + '&sz=64',
+            linkImage: '',
+            linkFullText: '', 
+            linkVirtual: false,
+            _userFetched: true,
+            time: Date.now()
+        };
+
+        if (quotedMsg) {
+            var qAnchor = pickBestQuoteAnchor(quotedMsg);
+            msg.quoteMsgId = quotedMsg.id || '';
+            msg.quoteAnchorId = qAnchor ? qAnchor.id : '';
+            msg.quoteTime = quotedMsg.time;
+            msg.quoteContent = qAnchor
+                ? qAnchor.text
+                : (quotedMsg.type === 'image' ? '[图片]' :
+                   quotedMsg.type === 'voice' ? '[语音]' :
+                   quotedMsg.type === 'sticker' ? '[表情包: ' + (quotedMsg.stickerDesc || '表情') + ']' :
+                   (quotedMsg.content || '').slice(0, 50));
+        }
+
+        appendMsg(msg);
+        if (typeof queueBgSync === "function") queueBgSync(200);
+
+        input.value = '';
+        autoGrow(input);
+        cancelQuote();
+        closeFunc();
+        lastInteract[curChar.id] = Date.now();
+
+        if (timer) clearTimeout(timer);
+        if (delayTimer) clearInterval(delayTimer);
+        removeDelay();
+
+        if (D.settings.autoReply) {
+            if ($('crStatus')) {
+                $('crStatus').textContent = '正在阅读链接...';
+                $('crStatus').classList.add('typing');
+            }
+        } else {
+            updateWaitBtn();
+        }
+
+        // 让统一引擎处理抓取，不在这里重复做
+        setTimeout(function() {
+            var freshData = getAccData();
+            var cid = curChar ? curChar.id : null;
+            if (cid && freshData.chats[cid]) {
+                processUserLinkMsg(cid, freshData.chats[cid].length - 1);
+            }
+        }, 300);
+
+        if (D.settings.autoReply) {
+            var fetchDelay = Math.max((D.settings.delay || 0) * 1000, 8000);
+            if ($('crStatus')) {
+                $('crStatus').textContent = '正在阅读链接...';
+                $('crStatus').classList.add('typing');
+            }
+            showDelay(Math.ceil(fetchDelay / 1000));
+            timer = setTimeout(function() {
+                removeDelay();
+                doResponse();
+            }, fetchDelay);
+        } else {
+            updateWaitBtn();
+        }
+
+        return; 
+    } else {
+        msg = { role: 'user', content: text, time: Date.now() };
     }
 
-appendMsg(msg);
-if (typeof queueBgSync === "function") queueBgSync(200);
+    if (quotedMsg) {
+        var qAnchor2 = pickBestQuoteAnchor(quotedMsg);
+        msg.quoteMsgId = quotedMsg.id || '';
+        msg.quoteAnchorId = qAnchor2 ? qAnchor2.id : '';
+        msg.quoteTime = quotedMsg.time;
+        msg.quoteContent = qAnchor2
+            ? qAnchor2.text
+            : (quotedMsg.type === 'image' ? '[图片]' :
+               quotedMsg.type === 'voice' ? '[语音]' :
+               quotedMsg.type === 'sticker' ? '[表情包: ' + (quotedMsg.stickerDesc || '表情') + ']' :
+               (quotedMsg.content || '').slice(0, 50));
+    }
+
+    appendMsg(msg);
+    if (typeof queueBgSync === "function") queueBgSync(200);
 
     input.value = '';
     autoGrow(input);
@@ -1334,22 +1766,30 @@ function saveChatEdit() {
 
 // ✅ 修复代码
 function clearChat() {
-    if (!confirm('确定清空聊天记录？')) return;
+    if (!confirm('确定清空聊天记录？长期记忆会保留。')) return;
+
     var data = getAccData();
     var charId = curChar ? curChar.id : respondingCharId;
     if (!charId) return toast('无法确定角色');
-    
+
+    // 只清空聊天记录
     data.chats[charId] = [];
-    data.hearts[charId] = [];
-    data.memories[charId] = []; // 新增：同时清空记忆
+
+    // 如果你也想保留“心声/心率/状态”，把下面这行也删掉
+    // data.hearts[charId] = [];
+
+    // 重置自动总结计数，避免后面累计逻辑错位
+    var charData = data.chars.find(function(c) { return c.id === charId; });
+    if (charData) {
+        charData.lastSummarizedCount = 0;
+        charData.summaryRunning = false;
+    }
+
     save();
-    
-    // 改动：先渲染消息，再关闭弹窗，确保顺序正确
     renderMsgs(true);
     closeModal('chatEditModal');
-    toast('已清空');
+    toast('已清空聊天记录，长期记忆已保留');
 }
-
 function updateTokenStats() {
     var sys = estTokens(buildSysPrompt());
     var char = estTokens(curChar.persona || '');
@@ -1697,7 +2137,7 @@ function renderContacts() {
         var preview = '点击开始聊天', time = '';
         if (last) {
             time = fmtTime(last.time);
-            var rawPreview = last.type === 'image' ? '[图片]' : last.type === 'voice' ? '[语音]' : (last.content || '');
+            var rawPreview = last.type === 'image' ? '[图片]' : last.type === 'voice' ? '[语音]' : last.type === 'link' ? (getDisplayContent(last) || '[链接]') : (last.content || '');
             preview = rawPreview.length > 16 ? rawPreview.slice(0, 16) + '…' : rawPreview;
             if (last.role === 'user') preview = '我: ' + preview;
         }
@@ -1774,6 +2214,16 @@ function momTouchMove(e, id) {
         if (el2) el2.classList.remove('swiped');
         swipedMomentId = null;
     }
+}
+
+function cTouchEnd() {
+    touchStartX = 0;
+    touchStartY = 0;
+}
+
+function momTouchEnd() {
+    momTouchStartX = 0;
+    momTouchStartY = 0;
 }
 
 function cClick(id) {
@@ -2424,4 +2874,697 @@ function retryRecognizeImage() {
         }
     });
 }
-function cTouchEnd() {}
+// ========== 链接内容处理系统 ==========
+var LINK_DATA_SEP = '\n\n{{FETCHED_LINK_DATA}}\n';
+
+function getDisplayContent(m) {
+    var c = m.content || '';
+    var idx = c.indexOf('{{FETCHED_LINK_DATA}}');
+    return idx >= 0 ? c.slice(0, idx).trim() : c;
+}
+
+function isBlockedContent(text) {
+    if (!text || text.length < 80) return true;
+    var bw = ['登录','验证码','请先登录','login required','sign in','captcha',
+              '请完成验证','在App内打开','打开APP','下载App','异常流量',
+              'unusual traffic','robot','are you human','access denied'];
+    var lt = text.toLowerCase();
+    var hit = 0;
+    bw.forEach(function(w) { if (lt.indexOf(w.toLowerCase()) >= 0) hit++; });
+    return hit >= 2 || (text.length < 500 && hit >= 1);
+}
+
+function toMobileUrl(u) {
+    if (u.indexOf('zhihu.com') >= 0) return u.replace('www.zhihu.com', 'm.zhihu.com');
+    if (u.indexOf('weibo.com') >= 0) return u.replace('weibo.com', 'm.weibo.cn');
+    if (u.indexOf('xiaohongshu.com') >= 0) return u.replace('www.xiaohongshu.com', 'm.xiaohongshu.com');
+    return u;
+}
+
+async function jinaSearch(query) {
+    var results = [];
+    try {
+        var resp = await Promise.race([
+            fetch('https://s.jina.ai/' + encodeURIComponent(query), {
+                headers: { 'Accept': 'application/json' }
+            }),
+            new Promise(function(_, r) { setTimeout(function(){ r({ok:false}); }, 15000); })
+        ]);
+        if (resp.ok) {
+            var json = await resp.json();
+            (json.data || []).slice(0, 5).forEach(function(d) {
+                if (d.url) results.push({
+                    url: d.url,
+                    title: d.title || '',
+                    desc: (d.description || d.content || '').slice(0, 300)
+                });
+            });
+        }
+    } catch(e) {
+        try {
+            var resp2 = await Promise.race([
+                fetch('https://s.jina.ai/' + encodeURIComponent(query)),
+                new Promise(function(_, r) { setTimeout(function(){ r({ok:false}); }, 15000); })
+            ]);
+            if (resp2.ok) {
+                var stext = await resp2.text();
+                var blocks = stext.split(/\[\d+\]/);
+                for (var i = 1; i < blocks.length && i <= 5; i++) {
+                    var um = blocks[i].match(/URL:\s*(https?:\/\/[^\s\n]+)/i);
+                    var tm = blocks[i].match(/Title:\s*(.+)/i);
+                    if (um) results.push({
+                        url: um[1].trim(),
+                        title: tm ? tm[1].trim() : '',
+                        desc: blocks[i].replace(/URL:.+/i,'').replace(/Title:.+/i,'').trim().slice(0,300)
+                    });
+                }
+            }
+        } catch(e2) {}
+    }
+    return results;
+}
+
+// 用jina读取页面内容（极速版）
+async function jinaRead(url) {
+    try {
+        var resp = await Promise.race([
+            fetch('https://r.jina.ai/' + url, {
+                headers: { 'Accept': 'text/markdown', 'X-Timeout': '4', 'X-Return-Format': 'markdown' }
+            }),
+            new Promise(function(_, r) { setTimeout(function(){ r({ok:false}); }, 6000); })
+        ]);
+        if (resp.ok) {
+            var text = await resp.text();
+            if (text && text.length > 150 && !isBlockedContent(text)) return text;
+        }
+    } catch(e) {}
+    return '';
+}
+
+// 通用页面抓取（直接读 → 移动版 → 搜索引擎缓存）
+async function fetchPageContent(url) {
+    if (!url) return { text: '', title: '', ok: false };
+
+    showFetchProgress();
+    
+    var isHardSite = /xiaohongshu|xhslink|douyin|tiktok|weibo|bilibili|zhihu|baidu/.test(url);
+
+    // ===== 8 大抓取通道 =====
+    var _lastRawHtml = '';
+    var _collectedImages = [];
+    var channels = [
+        {
+            name: '① Jina读取',
+            skip: isHardSite,
+            run: function() {
+                return Promise.race([
+                    fetch('https://r.jina.ai/' + url, {
+                        headers: { 'Accept': 'text/markdown', 'X-Timeout': '8', 'X-Return-Format': 'markdown', 'X-No-Cache': 'true' }
+                    }).then(function(r) { return r.text(); }),
+                    new Promise(function(_, rej) { setTimeout(function(){ rej(new Error('超时')); }, 10000); })
+                ]);
+            }
+        },
+        {
+            name: '② Jina手机版',
+            skip: isHardSite,
+            run: function() {
+                var mob = toMobileUrl(url);
+                if (mob === url) return Promise.reject(new Error('无手机版'));
+                return Promise.race([
+                    fetch('https://r.jina.ai/' + mob, {
+                        headers: { 'Accept': 'text/markdown', 'X-Timeout': '8', 'X-Return-Format': 'markdown' }
+                    }).then(function(r) { return r.text(); }),
+                    new Promise(function(_, rej) { setTimeout(function(){ rej(new Error('超时')); }, 10000); })
+                ]);
+            }
+        },
+        {
+            name: '③ AllOrigins代理',
+            run: function() {
+                return Promise.race([
+                    fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(url))
+                        .then(function(r) { if (!r.ok) throw new Error(r.status); return r.text(); })
+                        .then(function(h) { _lastRawHtml = h; _collectedImages = _collectedImages.concat(extractImagesFromHtml(h)); return stripHtml(h); }),
+                    new Promise(function(_, rej) { setTimeout(function(){ rej(new Error('超时')); }, 12000); })
+                ]);
+            }
+        },
+        {
+            name: '④ CorsPrxy代理',
+            run: function() {
+                return Promise.race([
+                    fetch('https://corsproxy.io/?' + encodeURIComponent(url))
+                        .then(function(r) { if (!r.ok) throw new Error(r.status); return r.text(); })
+                        .then(function(h) { _lastRawHtml = h; _collectedImages = _collectedImages.concat(extractImagesFromHtml(h)); return stripHtml(h); }),
+                    new Promise(function(_, rej) { setTimeout(function(){ rej(new Error('超时')); }, 12000); })
+                ]);
+            }
+        },
+        {
+            name: '⑤ CorsAnywhere',
+            run: function() {
+                return Promise.race([
+                    fetch('https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url))
+                        .then(function(r) { if (!r.ok) throw new Error(r.status); return r.text(); })
+                        .then(function(h) { _lastRawHtml = h; _collectedImages = _collectedImages.concat(extractImagesFromHtml(h)); return stripHtml(h); }),
+                    new Promise(function(_, rej) { setTimeout(function(){ rej(new Error('超时')); }, 12000); })
+                ]);
+            }
+        },
+        {
+            name: '⑥ Microlink引擎',
+            run: function() {
+                return Promise.race([
+                    fetch('https://api.microlink.io/?url=' + encodeURIComponent(url) + '&prerender=true')
+                        .then(function(r) { return r.json(); })
+                        .then(function(res) {
+                            if (res.status === 'success' && res.data) {
+                                var parts = [];
+                                if (res.data.title) parts.push('# ' + res.data.title);
+                                if (res.data.description) parts.push(res.data.description);
+                                if (res.data.lang) parts.push('[语言: ' + res.data.lang + ']');
+                                var combined = parts.join('\n\n');
+                                if (combined.length > 30) return combined;
+                            }
+                            throw new Error('Microlink无内容');
+                        }),
+                    new Promise(function(_, rej) { setTimeout(function(){ rej(new Error('超时')); }, 15000); })
+                ]);
+            }
+        },
+        {
+            name: '⑦ 搜索情报(URL)',
+            run: function() {
+                return jinaSearch(url).then(function(sr) {
+                    if (sr.length > 0) {
+                        return sr.slice(0, 3).map(function(s) {
+                            return '【' + s.title + '】\n' + s.desc;
+                        }).join('\n\n');
+                    }
+                    throw new Error('搜索无果');
+                });
+            }
+        },
+        {
+            name: '⑧ 搜索情报(关键词)',
+            run: function() {
+                // 从URL中提取关键词进行搜索
+                var keywords = url.replace(/https?:\/\//,'').replace(/[\/\?\#\&\=\_\-\.]/g, ' ').trim();
+                return jinaSearch(keywords).then(function(sr) {
+                    if (sr.length > 0) {
+                        return sr.slice(0, 3).map(function(s) {
+                            return '【' + s.title + '】\n' + s.desc;
+                        }).join('\n\n');
+                    }
+                    throw new Error('搜索无果');
+                });
+            }
+        },
+        {
+            name: '⑨ 图片专抓(og)',
+            run: function() {
+                // 专门抓og:image，不要求文字
+                return Promise.race([
+                    fetch('https://api.allorigins.win/get?url=' + encodeURIComponent(url))
+                        .then(function(r) { return r.json(); })
+                        .then(function(d) {
+                            var h = d.contents || '';
+                            var imgs = extractImagesFromHtml(h);
+                            _collectedImages = _collectedImages.concat(imgs);
+                            return stripHtml(h);
+                        }),
+                    new Promise(function(_, rej) { setTimeout(function(){ rej(new Error('超时')); }, 12000); })
+                ]);
+            }
+        },
+        {
+            name: '⑩ Webcache代理',
+            run: function() {
+                return Promise.race([
+                    fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent('https://webcache.googleusercontent.com/search?q=cache:' + url))
+                        .then(function(r) { if (!r.ok) throw new Error(r.status); return r.text(); })
+                        .then(function(h) { _collectedImages = _collectedImages.concat(extractImagesFromHtml(h)); return stripHtml(h); }),
+                    new Promise(function(_, rej) { setTimeout(function(){ rej(new Error('超时')); }, 10000); })
+                ]);
+            }
+        }
+    ];
+
+    // 逐个尝试
+    var bestText = '';
+    var bestTitle = '';
+
+    for (var i = 0; i < channels.length; i++) {
+        var ch = channels[i];
+        if (ch.skip) {
+            updateFetchProgress(i, ch.name, 'fail', '跳过');
+            continue;
+        }
+        updateFetchProgress(i, ch.name, 'loading', '请求中...');
+        try {
+            var text = await ch.run();
+            if (text && text.length > 80 && !isBlockedContent(text)) {
+                updateFetchProgress(i, ch.name, 'ok', text.length + '字');
+                var titleMatch = text.match(/^#\s+(.+)/m) || text.match(/【(.+?)】/);
+                closeFetchProgress(true, text.length);
+                var extractedImages = extractImagesFromHtml(_lastRawHtml);
+                // 合并所有通道收集到的图片
+                var allImages = _collectedImages.concat(extractedImages);
+                var uniqueImages = [];
+                allImages.forEach(function(img) {
+                    if (img && uniqueImages.indexOf(img) < 0) uniqueImages.push(img);
+                });
+                _lastRawHtml = '';
+                _collectedImages = [];
+                return { 
+                    text: text, 
+                    title: titleMatch ? titleMatch[1].trim() : '', 
+                    ok: true,
+                    images: uniqueImages
+                };
+            } else {
+                var reason = !text ? '空内容' : text.length <= 80 ? '内容太短(' + text.length + '字)' : '被拦截';
+                updateFetchProgress(i, ch.name, 'fail', reason);
+                // 保留最长的结果作为备用
+                if (text && text.length > bestText.length) {
+                    bestText = text;
+                    var tm = text.match(/^#\s+(.+)/m);
+                    if (tm) bestTitle = tm[1].trim();
+                }
+            }
+        } catch(e) {
+            updateFetchProgress(i, ch.name, 'fail', (e && e.message) || '出错');
+        }
+    }
+
+    // 全部失败，用最好的残次品
+    if (bestText.length > 30) {
+        closeFetchProgress(true, bestText.length);
+        var fallbackImages = extractImagesFromHtml(_lastRawHtml);
+        var allFbImages = _collectedImages.concat(fallbackImages);
+        var uniqueFbImages = [];
+        allFbImages.forEach(function(img) {
+            if (img && uniqueFbImages.indexOf(img) < 0) uniqueFbImages.push(img);
+        });
+        _lastRawHtml = '';
+        _collectedImages = [];
+        return { text: bestText, title: bestTitle, ok: true, images: uniqueFbImages };
+    }
+
+    closeFetchProgress(false, 0);
+    return { text: '', title: '', ok: false, images: [] };
+}
+
+// ===== 从HTML中提取图片URL =====
+function extractImagesFromHtml(html) {
+    if (!html) return [];
+    var images = [];
+
+    // 1. og:image（几乎所有网站都有）
+    var ogImgs = html.match(/<meta[^>]*property\s*=\s*["']og:image(?::?\w*)["'][^>]*content\s*=\s*["']([^"']+)["']/gi) || [];
+    ogImgs.forEach(function(tag) {
+        var m = tag.match(/content\s*=\s*["']([^"']+)["']/i);
+        if (m && m[1] && m[1].startsWith('http')) images.push(m[1]);
+    });
+
+    // 2. twitter:image
+    var twImg = html.match(/<meta[^>]*name\s*=\s*["']twitter:image["'][^>]*content\s*=\s*["']([^"']+)["']/i);
+    if (twImg && twImg[1]) images.push(twImg[1]);
+
+    // 3. __INITIAL_STATE__（小红书笔记图片）
+    var initState = html.match(/__INITIAL_STATE__\s*=\s*(\{[\s\S]*?\})(?:\s*;)/);
+    if (initState) {
+        try {
+            var state = JSON.parse(initState[1].replace(/undefined/g, 'null'));
+            var noteData = state.note && state.note.noteDetailMap;
+            if (noteData) {
+                var noteKeys = Object.keys(noteData);
+                if (noteKeys.length > 0) {
+                    var nd = noteData[noteKeys[0]].note;
+                    if (nd && nd.imageList && Array.isArray(nd.imageList)) {
+                        nd.imageList.forEach(function(img) {
+                            var u = img.urlDefault || img.url || img.originalUrl || '';
+                            if (u && u.startsWith('http')) images.push(u);
+                        });
+                    }
+                    // 视频封面
+                    if (nd && nd.video && nd.video.image) {
+                        var vu = nd.video.image.urlDefault || nd.video.image.url || '';
+                        if (vu) images.push(vu);
+                    }
+                }
+            }
+        } catch (e) {}
+    }
+
+    // 4. B站视频封面
+    var initData = html.match(/__INITIAL_DATA__\s*=\s*(\{[\s\S]*?\})(?:\s*;)/);
+    if (initData) {
+        try {
+            var bd = JSON.parse(initData[1].replace(/undefined/g, 'null'));
+            if (bd.videoData && bd.videoData.pic) images.push(bd.videoData.pic);
+        } catch (e) {}
+    }
+
+    // 5. 大尺寸img标签（过滤小图标）
+    var imgTags = html.match(/<img[^>]+src\s*=\s*["']([^"']{20,})["'][^>]*>/gi) || [];
+    imgTags.forEach(function(tag) {
+        var src = tag.match(/src\s*=\s*["']([^"']+)["']/i);
+        if (!src || !src[1] || !src[1].startsWith('http')) return;
+        var u = src[1];
+        // 跳过小图标
+        if (/icon|logo|avatar|emoji|badge|favicon|sprite|loading|placeholder/i.test(u)) return;
+        // 只要看起来像图片的
+        if (/\.(jpg|jpeg|png|webp|gif)/i.test(u) || u.indexOf('image') > 0) {
+            images.push(u);
+        }
+    });
+
+    // 去重
+    var unique = [];
+    images.forEach(function(img) {
+        var clean = img.split('?')[0]; // 去参数后比较
+        var isDup = unique.some(function(u) { return u.split('?')[0] === clean; });
+        if (!isDup && img.startsWith('http')) unique.push(img);
+    });
+
+    return unique.slice(0, 5);
+}
+
+// 自动识别链接中的图片
+function autoRecognizeLinkImages(charId, msgIdx, imageUrls) {
+    if (!imageUrls || !imageUrls.length) return;
+    if (typeof recognizeImage !== 'function') return;
+
+    var toRecognize = imageUrls.slice(0, 3); // 最多识3张
+    var descriptions = [];
+    var done = 0;
+
+    toRecognize.forEach(function(imgUrl, i) {
+        recognizeImage(imgUrl, function(desc) {
+            descriptions[i] = desc;
+            done++;
+
+            if (done >= toRecognize.length) {
+                var fd = getAccData();
+                var fm = fd.chats[charId] && fd.chats[charId][msgIdx];
+                if (!fm) return;
+
+                var validDescs = descriptions.filter(function(d) { return d && d !== '图片' && d.length > 5; });
+                if (!validDescs.length) return;
+
+                // 追加图片描述到消息内容
+                var imgSection = '\n\n【链接中的图片内容描述】:\n';
+                validDescs.forEach(function(d, j) {
+                    imgSection += '图' + (j + 1) + ': ' + d + '\n';
+                });
+                fm.content = (fm.content || '') + imgSection;
+
+                // 设置链接卡片封面
+                if (!fm.linkImage && imageUrls[0]) {
+                    fm.linkImage = imageUrls[0];
+                }
+
+                save();
+                if (curChar && curChar.id === charId && !responding) renderMsgs(false);
+                toast('✅ 链接图片识别完成');
+            }
+        });
+    });
+}
+
+// HTML清洗工具函数
+function stripHtml(html) {
+    if (!html) return '';
+    // 尝试提取 JSON-LD 结构化数据（很多网站都有）
+    var jsonLd = html.match(/<script[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/i);
+    var extraInfo = '';
+    if (jsonLd) {
+        try {
+            var ld = JSON.parse(jsonLd[1]);
+            var parts = [];
+            if (ld.headline || ld.name) parts.push('# ' + (ld.headline || ld.name));
+            if (ld.description) parts.push(ld.description);
+            if (ld.articleBody) parts.push(ld.articleBody.slice(0, 2000));
+            if (ld.text) parts.push(ld.text.slice(0, 2000));
+            if (ld.author) {
+                var authorName = typeof ld.author === 'string' ? ld.author : (ld.author.name || '');
+                if (authorName) parts.push('作者: ' + authorName);
+            }
+            extraInfo = parts.join('\n\n');
+            if (extraInfo.length > 100) return extraInfo;
+        } catch(e) {}
+    }
+
+    // 尝试提取 og/meta 标签
+    var ogTitle = (html.match(/<meta[^>]*property\s*=\s*["']og:title["'][^>]*content\s*=\s*["']([^"']+)["']/i) || [])[1] || '';
+    var ogDesc = (html.match(/<meta[^>]*property\s*=\s*["']og:description["'][^>]*content\s*=\s*["']([^"']+)["']/i) || [])[1] || '';
+    var metaDesc = (html.match(/<meta[^>]*name\s*=\s*["']description["'][^>]*content\s*=\s*["']([^"']+)["']/i) || [])[1] || '';
+    var titleTag = (html.match(/<title[^>]*>([^<]+)<\/title>/i) || [])[1] || '';
+
+    var metaInfo = '';
+    if (ogTitle || titleTag) metaInfo += '# ' + (ogTitle || titleTag) + '\n\n';
+    if (ogDesc || metaDesc) metaInfo += (ogDesc || metaDesc) + '\n\n';
+
+    // 尝试提取 __INITIAL_STATE__（小红书、B站等）
+    var initState = html.match(/__INITIAL_STATE__\s*=\s*(\{[\s\S]*?\})(?:\s*;)/);
+    if (initState) {
+        try {
+            var state = JSON.parse(initState[1].replace(/undefined/g, 'null'));
+            var noteData = state.note && state.note.noteDetailMap;
+            if (noteData) {
+                var noteKeys = Object.keys(noteData);
+                if (noteKeys.length > 0) {
+                    var nd = noteData[noteKeys[0]].note;
+                    if (nd) {
+                        var parts2 = [];
+                        if (nd.title) parts2.push('# ' + nd.title);
+                        if (nd.desc) parts2.push(nd.desc);
+                        if (nd.user && nd.user.nickname) parts2.push('作者: ' + nd.user.nickname);
+                        if (nd.interactInfo) {
+                            parts2.push('点赞: ' + (nd.interactInfo.likedCount || 0) + ' 收藏: ' + (nd.interactInfo.collectedCount || 0));
+                        }
+                        var stateText = parts2.join('\n');
+                        if (stateText.length > 50) return metaInfo + stateText;
+                    }
+                }
+            }
+        } catch(e) {}
+    }
+
+    // 常规HTML清洗
+    var cleaned = html
+        .replace(/<script\b[\s\S]*?<\/script>/gi, '')
+        .replace(/<style\b[\s\S]*?<\/style>/gi, '')
+        .replace(/<nav\b[\s\S]*?<\/nav>/gi, '')
+        .replace(/<footer\b[\s\S]*?<\/footer>/gi, '')
+        .replace(/<header\b[\s\S]*?<\/header>/gi, '')
+        .replace(/<!--[\s\S]*?-->/g, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/\s{3,}/g, '\n')
+        .trim();
+
+    if (metaInfo && metaInfo.length > 30) {
+        return metaInfo + cleaned.slice(0, 2000);
+    }
+    return cleaned.slice(0, 3000);
+}
+// 将抓取内容写入消息的content字段（AI可见）
+function writeFetchedContent(fm, url, pageText) {
+    if (!pageText) return;
+    fm.linkFullText = pageText.slice(0, 5000);
+    var orig = getDisplayContent(fm);
+    fm.content = orig + LINK_DATA_SEP
+        + '[链接: ' + url + ']\n'
+        + '[网页内容]\n' + pageText.slice(0, 2000);
+
+    // 提取图片
+    var imgM = pageText.match(/!\[.*?\]\((https?:\/\/[^\s\)]+(?:\.jpg|\.jpeg|\.png|\.webp|\.gif)[^\s\)]*)\)/i);
+    if (imgM && !fm.linkImage) fm.linkImage = imgM[1];
+}
+
+// ===== AI发链接：搜索真实链接替换编造的 =====
+async function processAiLinkMsg(charId, msgIdx) {
+    var data = getAccData();
+    var msg = data.chats[charId] && data.chats[charId][msgIdx];
+    if (!msg || msg.type !== 'link' || msg._aiVerified) return;
+    msg._aiVerified = true;
+    save();
+
+    // 提取AI想分享什么（搜索意图）
+    var dispContent = getDisplayContent(msg);
+    var intent = typeof normalizeAiLinkQuery === 'function'
+        ? normalizeAiLinkQuery(msg.linkTitle, msg.linkDesc, dispContent)
+        : [msg.linkTitle, msg.linkDesc, dispContent]
+            .filter(function(s) { return s && s.trim(); })
+            .join(' ')
+            .trim();
+    if (!intent) intent = 'interesting link';
+
+    // 用搜索引擎搜索真实链接
+    var results = await jinaSearch(intent);
+
+    var fd = getAccData();
+    var fm = fd.chats[charId] && fd.chats[charId][msgIdx];
+    if (!fm) return;
+
+    if (!results.length || !results[0].url) {
+        // 搜索失败 → 降级为纯文字
+        var fallback = getDisplayContent(fm) || '';
+        delete fm.type; delete fm.linkUrl; delete fm.linkTitle; delete fm.linkDesc;
+        delete fm.linkFavicon; delete fm.linkImage; delete fm.linkFullText;
+        fm.content = (fallback ? fallback + '\n' : '') + '[未找到相关内容]';
+        save();
+        if (curChar && curChar.id === charId && !responding) renderMsgs(false);
+        return;
+    }
+
+    // 用真实链接替换AI编造的
+    var best = results[0];
+    fm.linkUrl = best.url;
+    fm.linkTitle = best.title || fm.linkTitle || '';
+    fm.linkDesc = best.desc || '';
+    try {
+        fm.linkFavicon = 'https://www.google.com/s2/favicons?domain=' + new URL(best.url).hostname + '&sz=64';
+    } catch(e) {}
+
+    save();
+    if (curChar && curChar.id === charId && !responding) renderMsgs(false);
+
+    // 异步抓取完整内容
+    var page = await fetchPageContent(best.url);
+    fd = getAccData();
+    fm = fd.chats[charId] && fd.chats[charId][msgIdx];
+    if (!fm) return;
+
+    if (page.ok) {
+        if (page.title) fm.linkTitle = page.title;
+        var descClean = page.text.replace(/^#.+\n/gm,'').replace(/!\[.*?\]\(.*?\)/g,'').trim();
+        if (descClean.length > 10) fm.linkDesc = descClean.slice(0, 150);
+        writeFetchedContent(fm, fm.linkUrl, page.text);
+    } else {
+        // 至少用搜索摘要
+        writeFetchedContent(fm, fm.linkUrl, best.title + '\n' + best.desc);
+    }
+
+    save();
+    if (curChar && curChar.id === charId && !responding) renderMsgs(false);
+}
+
+// ===== 用户发链接：抓取内容让AI可见 =====
+async function processUserLinkMsg(charId, msgIdx) {
+    var data = getAccData();
+    var msg = data.chats[charId] && data.chats[charId][msgIdx];
+    if (!msg || msg.type !== 'link' || !msg.linkUrl) return;
+    // 如果已经有有效抓取内容，不重复抓
+    if (msg.content && msg.content.indexOf('{{FETCHED_LINK_DATA}}') >= 0 && msg.linkFullText && msg.linkFullText.length > 100) return;
+
+    var url = msg.linkUrl;
+
+    // 先快速获取meta信息（图标、封面）
+    if (typeof fetchLinkMeta === 'function') {
+        fetchLinkMeta(url, function(meta) {
+            var d2 = getAccData();
+            var m2 = d2.chats[charId] && d2.chats[charId][msgIdx];
+            if (m2) {
+                if (meta.title) m2.linkTitle = meta.title;
+                if (meta.desc) m2.linkDesc = meta.desc;
+                if (meta.favicon) m2.linkFavicon = meta.favicon;
+                if (meta.image) m2.linkImage = meta.image;
+                save();
+                if (curChar && curChar.id === charId && !responding) renderMsgs(false);
+            }
+        });
+    }
+
+    // 抓取完整内容
+    var page = await fetchPageContent(url);
+
+    var fd = getAccData();
+    var fm = fd.chats[charId] && fd.chats[charId][msgIdx];
+    if (!fm) return;
+
+    if (page.ok && page.text) {
+        if (page.title && (!fm.linkTitle || fm.linkTitle === new URL(url).hostname)) fm.linkTitle = page.title;
+        if (!fm.linkDesc || fm.linkDesc === '正在加载网页...') {
+            var dc = page.text.replace(/^#.+\n/gm,'').replace(/!\[.*?\]\(.*?\)/g,'').trim();
+            if (dc.length > 10) fm.linkDesc = dc.slice(0, 150);
+        }
+
+        // 关键：喂饭格式，让AI必须看到
+        fm.linkFullText = page.text.slice(0, 5000);
+        var orig = getDisplayContent(fm);
+        fm.content = orig + LINK_DATA_SEP
+            + '[链接: ' + url + ']\n'
+            + '\n--- [系统已自动提取网页内容，请阅读并回复] ---\n'
+            + '【页面标题】: ' + (fm.linkTitle || '未知') + '\n'
+            + '【正文内容】:\n' + page.text.slice(0, 4000)
+            + '\n--- [提取结束] ---\n';
+
+        // 提取图片
+        var imgM = page.text.match(/!\[.*?\]\((https?:\/\/[^\s\)]+)\)/);
+        if (imgM && !fm.linkImage) fm.linkImage = imgM[1];
+        // 自动识别链接中的图片
+        // 自动识别链接中的图片
+        var linkImages = (page.images && page.images.length) ? page.images : [];
+        if (!linkImages.length && fm.linkImage) linkImages = [fm.linkImage];
+        
+        // 如果还是没图片，最后单独尝试用Microlink抓封面
+        if (!linkImages.length) {
+            try {
+                var mlResp = await Promise.race([
+                    fetch('https://api.microlink.io/?url=' + encodeURIComponent(url)),
+                    new Promise(function(_, rej) { setTimeout(function(){ rej(new Error('超时')); }, 8000); })
+                ]);
+                var mlData = await mlResp.json();
+                if (mlData.status === 'success' && mlData.data) {
+                    if (mlData.data.image && mlData.data.image.url) {
+                        linkImages.push(mlData.data.image.url);
+                    }
+                    if (mlData.data.logo && mlData.data.logo.url) {
+                        linkImages.push(mlData.data.logo.url);
+                    }
+                }
+            } catch(e) {}
+        }
+        
+        if (linkImages.length > 0) {
+            if (!fm.linkImage) fm.linkImage = linkImages[0];
+            save();
+            if (curChar && curChar.id === charId && !responding) renderMsgs(false);
+            autoRecognizeLinkImages(charId, msgIdx, linkImages);
+        }
+    } else {
+        fm.linkDesc = fm.linkDesc || '内容暂时无法读取';
+    }
+
+    save();
+    if (curChar && curChar.id === charId && !responding) renderMsgs(false);
+    
+    // 更新状态栏
+    if ($('crStatus') && curChar && curChar.id === charId) {
+        $('crStatus').textContent = '在线';
+        $('crStatus').classList.remove('typing');
+    }
+}
+
+// ===== 复制链接URL =====
+function copyLinkUrl() {
+    var data = getAccData();
+    var charId = curChar ? curChar.id : respondingCharId;
+    var msg = data.chats[charId] && data.chats[charId][selectedMsgIdx];
+    var url = msg && msg.linkUrl;
+    if (url && url !== 'undefined' && url.indexOf('http') === 0) {
+        navigator.clipboard.writeText(url).then(function() { toast('链接已复制'); });
+    } else {
+        toast('链接暂不可用');
+    }
+    hideMsgMenu();
+}
