@@ -1,4 +1,31 @@
 // ========== AI回复核心 ==========
+// ★ 获取角色专属API配置（模型/URL/Key均可覆盖）
+function getApiForChar(charId) {
+    var data = getAccData();
+    var charData = data && data.chars ? data.chars.find(function(c) { return c.id === charId; }) : null;
+
+    var url = D.api.url;
+    var key = D.api.key;
+    var model = D.api.model;
+    var temp = D.api.temp;
+    var topP = D.api.topP;
+
+    if (charData && charData.useCustomModel && charData.customModel) {
+        model = charData.customModel;
+        // 如果角色设了独立的 URL/Key，也一并覆盖
+        if (charData.customApiUrl) url = charData.customApiUrl;
+        if (charData.customApiKey) key = charData.customApiKey;
+    }
+
+    return {
+        url: url,
+        key: key,
+        model: model,
+        temp: temp,
+        topP: topP
+    };
+}
+
 function doResponse() {
     if (responding) return;
     if (!D.api.key) { toast('请先配置API'); return; }
@@ -160,30 +187,44 @@ if (D.settings.timeAware) {
         p += '- 发手机照片：<IMAGE>英文画面提示词</IMAGE><DESC>中文描述</DESC>\n';
     }
 
-    p += '- 发链接分享：<LINK url="virtual" title="搜索关键词" desc="一句简介">附带文字</LINK>\n';
-    p += '  ⚠️ 你并不知道真实URL，绝对不要编造网址、域名、路径、参数，也不要在正文里输出 http/https 链接。\n';
-    p += '  系统会根据 title 自动搜索真实网页并替换成真正可打开的链接。\n';
-    p += '  title 必须写得具体，最好带平台名、主题词、作者名、作品名、关键词，不要只写“这个视频”“一首歌”“那个帖子”。\n';
-    p += '  正确示例：<LINK url="virtual" title="李荣浩 乌梅子酱 网易云音乐" desc="这首最近一直在循环">你听这个</LINK>\n';
-    p += '  正确示例：<LINK url="virtual" title="猫咪踩奶搞笑合集 bilibili" desc="这个真的很好笑">你看这个哈哈哈</LINK>\n';
-    p += '  错误示例：<LINK url="https://xxx.com/abc" title="好东西" desc="很好看">你看</LINK>\n';
-p += '- 引用回复：<QUOTE id="锚点ID">聊天里真实出现过的原文片段</QUOTE>你的回复内容\n';
+    p += '- 发链接分享：<LINK url="URL或virtual" title="标题/搜索关键词" desc="简介">附带文字</LINK>\n';
+    p += '  【两种用法】\n';
+    p += '  方式A（你确定知道真实存在的网址）：直接写进 url。\n';
+    p += '    例：<LINK url="https://www.bilibili.com" title="B站首页" desc="无聊刷会儿">看看</LINK>\n';
+    p += '    例：<LINK url="https://music.163.com" title="网易云音乐" desc="听歌去">来听</LINK>\n';
+    p += '  方式B（不确定完整URL，或想分享某个具体内容）：url 填 "virtual"，title 写具体关键词，系统自动搜索替换。\n';
+    p += '    例：<LINK url="virtual" title="李荣浩 乌梅子酱 网易云音乐" desc="最近一直循环">你听这个</LINK>\n';
+    p += '    例：<LINK url="virtual" title="猫咪踩奶搞笑合集 bilibili" desc="真的太好笑">看这个</LINK>\n';
+    p += '  【硬规则】\n';
+    p += '  ⚠️ 严禁编造看起来像真URL但实际不存在的网址（比如随便拼 /video/123456）。不确定就用 virtual。\n';
+    p += '  ⚠️ 用 virtual 时 title 必须带平台名+主题词+作者/作品名，不要只写"这个视频""一首歌"。\n';
+    p += '  ⚠️ 不要在正文里直接贴 http/https 链接，分享链接只能通过 <LINK> 标签。\n';
 p += '- 引用回复：<QUOTE id="锚点ID">聊天里真实出现过的原文片段</QUOTE>你的回复内容\n';
 p += '  【引用规则】\n';
-p += '  1. 引用是"单条消息级别"的，不是整轮回复级别。\n';
-p += '  2. <QUOTE> 必须放在它所绑定的那一条消息最开头，而不是整段输出最开头。\n';
-p += '  3. 如果你要连发多条消息，必须用 <SPLIT> 分开；想让第几条带引用，就把 <QUOTE> 写在第几条里面。\n';
-p += '  4. 例如：第一条普通消息<SPLIT><QUOTE id="qa_xxx">绝对不吃</QUOTE>现在又饿了？ 这表示第二条带引用。\n';
-p += '  5. 再例如：第一条<SPLIT>第二条<SPLIT><QUOTE id="qa_xxx">绝对不吃</QUOTE>现在又饿了？ 这表示第三条带引用。\n';
-p += '  6. 不要默认把引用总是放在整轮输出的第一条，除非你真的想让第一条消息带引用。\n';
-p += '  7. 正确格式只能是：<QUOTE id="锚点ID">原文片段</QUOTE>你的回复内容\n';
-p += '  8. id 只能从【最近可引用片段】里选。\n';
-p += '  9. <QUOTE> 内的文字必须和该 id 对应的原文片段一字不差，不能改写、扩写、缩写、替换同义词。\n';
-p += '  10. 你可以引用用户的话，也可以引用你自己之前的话，但都必须来自聊天里真实出现过的原文。\n';
-p += '  11. 一条消息里最多只用 1 个 <QUOTE>。\n';
-p += '  12. 错误示例：<QUOTE id="qa_xxx">绝对不吃</QUOTE>第一条<SPLIT>第二条 这会让引用落在第一条。\n';
-p += '  13. 严禁输出 [引用"..."]、【引用：...】、引用: ... 这类文字前缀；系统只识别 <QUOTE>...</QUOTE>。\n';
-p += '  14. 不要总是在第一句话或固定位置输出，要积极搭配位置和多次引用以丰富内容和达到活人感。\n';
+p += '  1. <QUOTE> 是"我在回复你哪条消息"的指示，不是"在句子中嵌入对方原话"的语法。\n';
+p += '  2. <QUOTE> 必须紧贴在某条消息的最开头，前面绝对不能有任何未结束的句子内容。\n';
+p += '  3. 一条消息只能有 1 个 <QUOTE>，且 <QUOTE>...</QUOTE> 后面跟的是你对那条消息的完整回复。\n';
+p += '  4. 想"指代"用户说过的某个词或某句话时，不要用 <QUOTE>，请用普通文字表达，比如直接说"那件事""这话""你刚说的XX"。\n';
+p += '  5. 连发多条消息必须用 <SPLIT> 分开；想让第N条带引用，就把 <QUOTE> 写在第N条的最开头。\n';
+p += '  6. id 只能从【最近可引用片段】里选；<QUOTE> 内的文字必须与该 id 对应的原文一字不差，不能改写、扩写、缩写、换同义词。\n';
+p += '  7. 你可以引用用户的话，也可以引用自己之前的话，但都必须来自聊天里真实出现过的原文。\n';
+p += '  8. 严禁输出 [引用"..."]、【引用：...】、引用: ... 这类文字前缀；系统只识别 <QUOTE>...</QUOTE>。\n';
+p += '  9. 不要总把引用放在固定位置（比如永远在第一条），按对话节奏自然分布。\n';
+p += '\n';
+p += '  ✅ 正确示例（引用独立成条）：\n';
+p += '  <QUOTE id="qa_aaa">如果她不走就好了</QUOTE>我知道你舍不得她，但她出院是好事呀。<SPLIT>而且你们现在已经是很要好的朋友了，对不对？\n';
+p += '\n';
+p += '  ❌ 错误示例（引用塞在句中当指代）：\n';
+p += '  我知道你舍不得她<SPLIT>你们现在已经是<QUOTE id="qa_bbb">我们会是特别特别好的朋友</QUOTE>了呀\n';
+p += '  ↑ 这种把引用当词组嵌进句子的写法，会让消息被切断渲染成奇怪的两段，绝对禁止。\n';
+p += '\n';
+p += '  ❌ 错误示例（前面有半句话）：\n';
+p += '  你刚才说<QUOTE id="qa_ccc">绝对不吃</QUOTE>，现在又饿了？\n';
+p += '  ↑ <QUOTE> 前面的"你刚才说"是未结束的句子，不允许。\n';
+p += '\n';
+p += '  ❌ 错误示例（引用落到了第一条）：\n';
+p += '  <QUOTE id="qa_ddd">绝对不吃</QUOTE>第一条<SPLIT>第二条\n';
+p += '  ↑ 想让第二条带引用就把 <QUOTE> 写在第二条开头。\n';
     p += '\n【排版要求】\n';
     p += '1. 不要输出空白行，不要连续换行。\n';
     p += '2. 需要连发多条消息时，只能使用 <SPLIT>，不要用普通换行代替分条。\n';
@@ -381,6 +422,18 @@ if (_data && _data.chars) {
     var charData = data.chars.find(function(c) { return c.id === charId; });
     var memCount = charData ? charData.memoryCount || 20 : 20;
     var history = (data.chats[charId] || []).filter(function(m) { return m.type !== 'sys' && !m.recalled; }).slice(-memCount);
+// ★ "图片仅发送一轮"模式预处理
+// 启用条件：关闭主动识图 + 开启该开关（默认开）
+// 找出 history 里最后一条AI消息的下标，它之后的用户图才是"还在等回复"的新图，
+// 之前的旧图都改用占位文本，避免每轮重复把图片塞给AI。
+var lastAiIdx = -1;
+for (var _li = history.length - 1; _li >= 0; _li--) {
+    if (history[_li].role === 'ai' && !history[_li].recalled) {
+        lastAiIdx = _li;
+        break;
+    }
+}
+var imageOneRoundMode = !D.settings.autoImageDesc && D.settings.imageOneRound !== false;
     history.forEach(function(m, i) {
         // ===== 时间跳跃标记：两条消息间隔超过30分钟就插入时间分隔 =====
         if (i > 0 && m.time && history[i-1].time) {
@@ -408,22 +461,57 @@ if (_data && _data.chars) {
     content = '[' + tDir + ' ¥' + (m.amount || 0).toFixed(2) + '，状态：' + tStatus + (m.remark ? '，备注：' + m.remark : '') + (m.status === 'pending' && m.transferDir === 'out' ? '，消息ID：' + m.id : '') + ']';
         } else if (m.type === 'sticker') {
             content = '[' + (m.role === 'user' ? '用户' : '你') + '发送了表情包: ' + (m.stickerDesc || '表情') + ']';
-        } else if (m.type === 'image') {
-            if (m.role === 'user' && i === history.length - 1 && m.imageUrl && !m.imageDesc) {
-                msgs.push({ role: 'user', content: [{ type: 'text', text: '用户发送了图片：' }, { type: 'image_url', image_url: { url: m.imageUrl } }] });
-                return;
+} else if (m.type === 'image') {
+    // 决定这张图怎么发给AI：
+    //   ① 有 imageDesc（识图过/手填了描述）→ 直接用文字 [图片: 描述]
+    //   ② 没 imageDesc + 启用"仅一轮"模式 → 只有最后一条AI消息之后的用户图发真图，
+    //     更早的图用占位文本，避免重复发图
+    //   ③ 没 imageDesc + 关闭"仅一轮"→ 每张用户图都发真图（旧行为，最费token）
+    var hasUserImage = m.role === 'user' && m.imageUrl;
+    var hasDesc = !!m.imageDesc;
+    var useVision = false;
+
+    if (hasUserImage && !hasDesc) {
+        useVision = imageOneRoundMode ? (i > lastAiIdx) : true;
+    }
+
+    if (useVision) {
+        var visionContent = [];
+        // 引用块也要带上，否则AI会丢失"这张图在回复哪条消息"的上下文
+        if (m.quoteContent) {
+            var qTxt = normalizeModelQuoteText(m.quoteContent);
+            if (qTxt) {
+                visionContent.push({
+                    type: 'text',
+                    text: m.quoteAnchorId
+                        ? '<QUOTE id="' + m.quoteAnchorId + '">' + qTxt + '</QUOTE>'
+                        : '<QUOTE>' + qTxt + '</QUOTE>'
+                });
             }
-            content = '[图片: ' + (m.imageDesc || '无描述') + ']';
-        } else if (m.type === 'voice') {
-            content = '[语音: ' + (m.content || '') + ']';
-        } else if (m.type === 'link') {
+        }
+        visionContent.push({ type: 'text', text: '用户发送了图片：' });
+        visionContent.push({ type: 'image_url', image_url: { url: m.imageUrl } });
+        msgs.push({ role: 'user', content: visionContent });
+        return;
+    }
+
+    // 走文字模式
+    content = '[图片: ' + (m.imageDesc || '用户之前发送过的图片') + ']';
+} else if (m.type === 'voice') {
+    content = '[语音: ' + (m.content || '') + ']';
+} else if (m.type === 'link') {
             // 🔥 图片代理函数：绕过防盗链
-            function proxyImg(url) {
-                if (!url) return '';
-                if (url.indexOf('wsrv.nl') !== -1) return url; // 已经代理过的不重复
-                if (url.indexOf('data:') === 0) return url; // base64不代理
-                return 'https://wsrv.nl/?url=' + encodeURIComponent(url);
-            }
+function proxyImg(url) {
+    if (!url) return '';
+    if (url.indexOf('wsrv.nl') !== -1) return url;
+    if (url.indexOf('data:') === 0) return url;
+    // 这些公开图床不防盗链，不需要代理
+    if (url.indexOf('microlink.io') !== -1) return url;
+    if (url.indexOf('thum.io') !== -1) return url;
+    if (url.indexOf('imgur.com') !== -1) return url;
+    if (url.indexOf('imgbb.com') !== -1) return url;
+    return 'https://wsrv.nl/?url=' + encodeURIComponent(url);
+}
 
             var linkContentText = '[分享了网页链接: ' + (m.linkTitle || m.linkUrl) + ']\n';
             
@@ -449,6 +537,12 @@ if (_data && _data.chars) {
             
             // 1. 封面图
             if (m.linkImage) imgUrls.push(m.linkImage);
+            // 1.1 Worker 抓的 base64 图（识图失败时兜底，base64 不受防盗链限制）
+            if (m._linkBase64Images && m._linkBase64Images.length) {
+                m._linkBase64Images.forEach(function(b64) {
+                    if (b64 && imgUrls.indexOf(b64) < 0) imgUrls.push(b64);
+                });
+            }
             
             // 1.5 如果是截图模式，截图作为第一张"图片"
             var hasScreenshot = isScreenshot && screenshotData;
@@ -485,7 +579,11 @@ if (_data && _data.chars) {
             imgUrls = imgUrls.slice(0, 6);
 
             // 如果这是用户最后一条消息 且 有图片，启动视觉模式
-                        if (m.role === 'user' && i === history.length - 1 && (imgUrls.length > 0 || hasScreenshot)) {
+// 链接图片不受"图片仅一轮"开关约束，每轮都让AI看到
+var linkHasMedia = imgUrls.length > 0 || hasScreenshot;
+var shouldSendLinkVision = m.role === 'user' && linkHasMedia;
+// 去掉 imageOneRoundMode 的限制
+            if (shouldSendLinkVision) {
                 var finalContent = [];
                if (m.quoteContent) {
     var qText2 = normalizeModelQuoteText(m.quoteContent);
@@ -540,10 +638,12 @@ if (m.quoteContent) {
 }
 
 function normalResp(messages) {
-    fetch(D.api.url.replace(/\/+$/, '') + '/v1/chat/completions', {
+    var api = getApiForChar(curChar ? curChar.id : respondingCharId);
+    window.__lastApiCall = { time: Date.now(), model: api.model, messages: messages };  // ★ 新增这行
+    fetch(api.url.replace(/\/+$/, '') + '/v1/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + D.api.key },
-        body: JSON.stringify({ model: D.api.model, messages: messages, temperature: D.api.temp, top_p: D.api.topP })
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + api.key },
+        body: JSON.stringify({ model: api.model, messages: messages, temperature: api.temp, top_p: api.topP })
     })
     .then(function(r) { return r.json(); })
     .then(function(d) {
@@ -564,6 +664,8 @@ function normalResp(messages) {
 
 function streamResp(messages) {
     hideTyping();
+    var api0 = getApiForChar(curChar ? curChar.id : respondingCharId);
+    window.__lastApiCall = { time: Date.now(), model: api0.model, messages: messages };  // ★ 新增这行
     var el = $('messages');
     var data = getAccData();
     var charId = curChar ? curChar.id : respondingCharId;
@@ -586,10 +688,11 @@ function streamResp(messages) {
     el.appendChild(tmp);
     el.scrollTop = el.scrollHeight;
     var bubble = tmp.querySelector('.msg-bubble');
-    fetch(D.api.url.replace(/\/+$/, '') + '/v1/chat/completions', {
+    var api = getApiForChar(curChar ? curChar.id : respondingCharId);  // ★ 新增
+    fetch(api.url.replace(/\/+$/, '') + '/v1/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + D.api.key },
-        body: JSON.stringify({ model: D.api.model, messages: messages, temperature: D.api.temp, top_p: D.api.topP, stream: true })
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + api.key },
+        body: JSON.stringify({ model: api.model, messages: messages, temperature: api.temp, top_p: api.topP, stream: true })
     })
     .then(function(resp) {
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
@@ -2035,8 +2138,9 @@ function processResp(text) {
         var lTitle = linkMatch[2].trim();
         var lDesc = (linkMatch[3] || '').trim();
         var lText = linkMatch[4].trim();
-        var isVirtual = true; // 所有AI链接都走搜索，不信任AI编造的URL
-        lUrl = 'javascript:void(0)';
+    // 真实 http/https URL 信任，其余走搜索还原
+    var isVirtual = !/^https?:\/\//i.test(lUrl) || lUrl === 'virtual';
+    if (isVirtual) lUrl = 'javascript:void(0)';
 
 var linkMsg = {
     id: genId('link'),
@@ -2066,4 +2170,43 @@ appendMsgToChat(savedCharId, linkMsg);
         charName: charName,
         hadStructuredTag: hadStructuredTag
     });
+}
+// ========== 调试：缓存上次API请求 ==========
+window.__lastApiCall = null;
+
+function viewLastApiCall() {
+    if (!window.__lastApiCall) {
+        toast('还没有任何 API 请求记录');
+        return;
+    }
+    var c = window.__lastApiCall;
+    var info = '';
+    info += '═══ 上次API请求 ═══\n';
+    info += '时间: ' + new Date(c.time).toLocaleString() + '\n';
+    info += '模型: ' + c.model + '\n';
+    info += '消息数: ' + c.messages.length + '\n\n';
+
+    c.messages.forEach(function(m, i) {
+        info += '─── #' + i + ' [' + m.role + '] ───\n';
+        if (typeof m.content === 'string') {
+            var s = m.content;
+            if (s.length > 600) s = s.slice(0, 600) + '\n...(已截断 ' + (m.content.length - 600) + ' 字)';
+            info += s + '\n\n';
+        } else if (Array.isArray(m.content)) {
+            m.content.forEach(function(p) {
+                if (p.type === 'text') {
+                    info += '[文字] ' + p.text + '\n';
+                } else if (p.type === 'image_url') {
+                    info += '[图片URL] ' + (p.image_url && p.image_url.url || '').slice(0, 120) + '\n';
+                }
+            });
+            info += '\n';
+        }
+    });
+
+    if (typeof showMsgDataDialog === 'function') {
+        showMsgDataDialog(info, null);
+    } else {
+        alert(info);
+    }
 }

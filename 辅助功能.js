@@ -1,6 +1,10 @@
 // ========== 备忘录数据初始化 ==========
 if (typeof D.memos === 'undefined') D.memos = {};
 if (typeof D.memoSettings === 'undefined') D.memoSettings = { aiAware: false, aiCount: 3 };
+if (!D.settings) D.settings = {};
+if (typeof D.settings.autoImageDesc === 'undefined') D.settings.autoImageDesc = true;
+if (typeof D.settings.useImageHost === 'undefined') D.settings.useImageHost = true;
+if (typeof D.settings.imgbbKey === 'undefined') D.settings.imgbbKey = '';
 
 function getDateKey(date) {
     var d = date || new Date();
@@ -374,8 +378,8 @@ function recognizeImage(imageData, callback) {
                     ]
                 }
             ],
-            temperature: 0.3,
-            max_tokens: 50000
+                        temperature: 0.2,
+            max_tokens: 150
         })
     })
     .then(function(r) { return r.json(); })
@@ -647,5 +651,52 @@ if (!D.settings) D.settings = {};
 if (typeof D.settings.bgOn === 'undefined') D.settings.bgOn = true;
 if (typeof D.settings.bgInterval === 'undefined') D.settings.bgInterval = 120;
 
+// ========== 图片上传到 ImgBB ==========
+function uploadImageToImgBB(base64OrFile, callback) {
+    var key = D.settings && D.settings.imgbbKey ? D.settings.imgbbKey.trim() : '';
+    if (!key) {
+        toast('未填写 ImgBB Key，使用本地图片');
+        callback(null);
+        return;
+    }
+
+    toast('正在上传图片...');
+
+    // 把 data:image/...;base64,xxxxx 切成纯 base64
+    var pureBase64;
+    if (typeof base64OrFile === 'string' && base64OrFile.indexOf('data:') === 0) {
+        pureBase64 = base64OrFile.split(',')[1];
+    } else if (typeof base64OrFile === 'string') {
+        pureBase64 = base64OrFile;
+    } else {
+        toast('图片格式错误');
+        callback(null);
+        return;
+    }
+
+    var fd = new FormData();
+    fd.append('image', pureBase64);
+
+    fetch('https://api.imgbb.com/1/upload?key=' + encodeURIComponent(key), {
+        method: 'POST',
+        body: fd
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (d && d.success && d.data && d.data.url) {
+            console.log('ImgBB 上传成功:', d.data.url);
+            callback(d.data.url);
+        } else {
+            console.error('ImgBB 返回异常:', d);
+            toast('图床上传失败');
+            callback(null);
+        }
+    })
+    .catch(function(e) {
+        console.error('ImgBB 上传错误:', e);
+        toast('图床上传失败：' + e.message);
+        callback(null);
+    });
+}
 // 前端本地后台活动已停用：
 // 统一改由服务端 /bg/sync + runBgCron + /bg/pull 负责

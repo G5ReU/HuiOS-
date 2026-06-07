@@ -10,6 +10,7 @@ settings: {
     bgOn: false, bgInterval: 120, bgDmOn: true, bgMomentOn: true,
     imgSize: 512, imgQuality: 0.6,
     debugConsoleOn: false,
+    linkScreenshot: true,
     notifyOn: false   // 新增这一行
 },
     accounts: [],

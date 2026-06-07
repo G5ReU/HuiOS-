@@ -401,6 +401,11 @@ function openChat(id) {
     var data = getAccData();
     curChar = data.chars.find(function(c) { return c.id === id; });
     if (!curChar) return;
+
+    // ★ 修红点：进入聊天就清除未读
+    unreadCounts[id] = 0;
+    if ($('chatPage').classList.contains('active')) renderContacts();
+
     backfillChatMsgMeta(id);
     data = getAccData();
 
@@ -976,12 +981,6 @@ function checkAutoSummary(charId) {
     }, 500);
 }
 
-function checkAutoSummary(charId) {
-    setTimeout(function() {
-        if (typeof autoSummaryIfNeeded === 'function') autoSummaryIfNeeded(charId);
-    }, 500);
-}
-
 var voicePlayTimer = null;
 
 function playVoice(el, idx, duration) {
@@ -1145,7 +1144,9 @@ function showMsgMenu(e, idx) {
         h = '<div class="msg-menu-item" onclick="viewRecalled('+idx+')">查看</div>';
         h += '<div class="msg-menu-item" onclick="enterMsgBatchMode()">多选</div>';
     } else {
-        h += '<div class="msg-menu-item" onclick="copyMsg()">复制</div>';
+h += '<div class="msg-menu-item" onclick="viewMsgData()">查看数据</div>';
+h += '<div class="msg-menu-item" onclick="viewLastApiCall()">查看上次API请求</div>';
+h += '<div class="msg-menu-item" onclick="copyMsg()">复制</div>';
         if (msg.type === 'link' && msg.linkUrl) h += '<div class="msg-menu-item" onclick="copyLinkUrl()">复制链接</div>';
         h += '<div class="msg-menu-item" onclick="quoteThisMsg()">引用</div>';
         h += '<div class="msg-menu-item" onclick="enterMsgBatchMode()">多选</div>';
@@ -1155,7 +1156,19 @@ function showMsgMenu(e, idx) {
         h += '<div class="msg-menu-item danger" onclick="deleteMsg()">删除</div>';
     }
     menu.innerHTML = h;
+    menu.style.display = 'grid';
+    menu.style.gridTemplateColumns = '1fr 1fr';
+    menu.style.gap = '2px';
+    menu.style.minWidth = '180px';
+    menu.style.maxWidth = '220px';
+    // ★ 让每个项居中
+    menu.querySelectorAll('.msg-menu-item').forEach(function(el) {
+        el.style.textAlign = 'center';
+        el.style.padding = '10px 8px';
+        el.style.fontSize = '13px';
+    });
     
+    var x = e.touches ? e.touches[0].clientX : e.clientX;
     var x = e.touches ? e.touches[0].clientX : e.clientX;
     var y = e.touches ? e.touches[0].clientY : e.clientY;
     menu.style.visibility = 'hidden';
@@ -1181,7 +1194,9 @@ function showMsgMenuAt(x, y, idx) {
         h = '<div class="msg-menu-item" onclick="viewRecalled('+idx+')">查看</div>';
         h += '<div class="msg-menu-item" onclick="enterMsgBatchMode()">多选</div>';
     } else {
-        h += '<div class="msg-menu-item" onclick="copyMsg()">复制</div>';
+h += '<div class="msg-menu-item" onclick="viewMsgData()">查看数据</div>';
+h += '<div class="msg-menu-item" onclick="viewLastApiCall()">查看上次API请求</div>';
+h += '<div class="msg-menu-item" onclick="copyMsg()">复制</div>';
                 if (msg.type === 'link' && msg.linkUrl) h += '<div class="msg-menu-item" onclick="copyLinkUrl()">复制链接</div>';
         h += '<div class="msg-menu-item" onclick="quoteThisMsg()">引用</div>';
         h += '<div class="msg-menu-item" onclick="enterMsgBatchMode()">多选</div>';
@@ -1191,6 +1206,17 @@ function showMsgMenuAt(x, y, idx) {
         h += '<div class="msg-menu-item danger" onclick="deleteMsg()">删除</div>';
     }
     menu.innerHTML = h;
+    menu.style.display = 'grid';
+    menu.style.gridTemplateColumns = '1fr 1fr';
+    menu.style.gap = '2px';
+    menu.style.minWidth = '180px';
+    menu.style.maxWidth = '220px';
+    // ★ 让每个项居中
+    menu.querySelectorAll('.msg-menu-item').forEach(function(el) {
+        el.style.textAlign = 'center';
+        el.style.padding = '10px 8px';
+        el.style.fontSize = '13px';
+    });
 
     menu.style.visibility = 'hidden';
     menu.classList.add('active');
@@ -1202,7 +1228,17 @@ function showMsgMenuAt(x, y, idx) {
     menu.style.visibility = 'visible';
 }
 
-function hideMsgMenu() { $('msgMenu').classList.remove('active'); selectedMsgIdx = -1; }
+function hideMsgMenu() {
+    var menu = $('msgMenu');
+    menu.classList.remove('active');
+    // ★ 清掉网格样式，避免影响下次打开
+    menu.style.display = '';
+    menu.style.gridTemplateColumns = '';
+    menu.style.gap = '';
+    menu.style.minWidth = '';
+    menu.style.maxWidth = '';
+    selectedMsgIdx = -1;
+}
 
 function copyMsg() {
     var data = getAccData();
@@ -1549,6 +1585,81 @@ async function sendMsg() {
         var textOnly = text;
         urls.forEach(function(u) { textOnly = textOnly.replace(u, '').trim(); });
         var url = urls[0];
+
+        // ★ 图片直链：先转 base64 再当图片消息发（绕过代理不会fetch远程URL的问题）
+        if (/\.(jpg|jpeg|png|webp|gif|bmp)(\?|$)/i.test(url)) {
+            toast('正在加载图片...');
+
+            // 用 wsrv.nl 代理绕开 CORS
+            var proxyUrl = 'https://wsrv.nl/?url=' + encodeURIComponent(url);
+
+            fetch(proxyUrl)
+                .then(function(r) {
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    return r.blob();
+                })
+                .then(function(blob) {
+                    return new Promise(function(resolve, reject) {
+                        var reader = new FileReader();
+                        reader.onload = function() { resolve(reader.result); };
+                        reader.onerror = function() { reject(new Error('读取失败')); };
+                        reader.readAsDataURL(blob);
+                    });
+                })
+                .then(function(dataUrl) {
+                    return new Promise(function(resolve) {
+                        compressImg(dataUrl, resolve);
+                    });
+                })
+                .then(function(finalUrl) {
+                    if (!finalUrl) { toast('图片加载失败'); return; }
+
+                    var imgMsg = {
+                        role: 'user',
+                        type: 'image',
+                        imageUrl: finalUrl,
+                        time: Date.now()
+                    };
+                    if (textOnly) imgMsg.imageDesc = textOnly;
+
+                    if (quotedMsg) {
+                        var qa = pickBestQuoteAnchor(quotedMsg);
+                        imgMsg.quoteMsgId = quotedMsg.id || '';
+                        imgMsg.quoteAnchorId = qa ? qa.id : '';
+                        imgMsg.quoteTime = quotedMsg.time;
+                        imgMsg.quoteContent = qa ? qa.text :
+                            (quotedMsg.type === 'image' ? '[图片]' :
+                             quotedMsg.type === 'voice' ? '[语音]' :
+                             (quotedMsg.content || '').slice(0, 50));
+                    }
+
+                    appendMsg(imgMsg);
+                    input.value = '';
+                    autoGrow(input);
+                    cancelQuote();
+                    closeFunc();
+                    lastInteract[curChar.id] = Date.now();
+
+                    if (D.settings.autoReply) {
+                        var d = D.settings.delay * 1000;
+                        if (d > 0) {
+                            showDelay(D.settings.delay);
+                            timer = setTimeout(function() { removeDelay(); doResponse(); }, d);
+                        } else {
+                            doResponse();
+                        }
+                    } else {
+                        updateWaitBtn();
+                    }
+                })
+                .catch(function(e) {
+                    console.warn('[图片直链] 获取失败', e);
+                    toast('图片加载失败：' + (e.message || '未知错误'));
+                });
+
+            return;
+        }
+
         var domain = '';
         try { domain = new URL(url).hostname; } catch(e) { domain = url; }
 
@@ -1562,7 +1673,7 @@ async function sendMsg() {
             linkDesc: '正在加载网页...',
             linkFavicon: 'https://www.google.com/s2/favicons?domain=' + domain + '&sz=64',
             linkImage: '',
-            linkFullText: '', 
+            linkFullText: '',
             linkVirtual: false,
             _userFetched: true,
             time: Date.now()
@@ -1594,40 +1705,45 @@ async function sendMsg() {
         if (delayTimer) clearInterval(delayTimer);
         removeDelay();
 
-        if (D.settings.autoReply) {
-            if ($('crStatus')) {
-                $('crStatus').textContent = '正在阅读链接...';
-                $('crStatus').classList.add('typing');
-            }
-        } else {
-            updateWaitBtn();
+// 拍快照（异步过程中 curChar 可能切换）
+var charIdSnap = curChar.id;
+var dataSnap = getAccData();
+var msgIdxSnap = dataSnap.chats[charIdSnap].length - 1;
+
+// 直接发起处理（async 会返回 Promise）
+var linkProcessPromise = processUserLinkMsg(charIdSnap, msgIdxSnap);
+
+if (D.settings.autoReply) {
+    if ($('crStatus')) {
+        $('crStatus').textContent = '正在阅读链接...';
+        $('crStatus').classList.add('typing');
+    }
+
+    // 等链接抓取+识图全部完成（最多 60 秒兜底）再触发回复
+    Promise.race([
+        linkProcessPromise,
+        new Promise(function(resolve) { setTimeout(resolve, 60000); })
+    ]).then(function() {
+        if ($('crStatus')) {
+            $('crStatus').textContent = '在线';
+            $('crStatus').classList.remove('typing');
         }
-
-        // 让统一引擎处理抓取，不在这里重复做
-        setTimeout(function() {
-            var freshData = getAccData();
-            var cid = curChar ? curChar.id : null;
-            if (cid && freshData.chats[cid]) {
-                processUserLinkMsg(cid, freshData.chats[cid].length - 1);
-            }
-        }, 300);
-
-        if (D.settings.autoReply) {
-            var fetchDelay = Math.max((D.settings.delay || 0) * 1000, 8000);
-            if ($('crStatus')) {
-                $('crStatus').textContent = '正在阅读链接...';
-                $('crStatus').classList.add('typing');
-            }
-            showDelay(Math.ceil(fetchDelay / 1000));
+        var d = (D.settings.delay || 0) * 1000;
+        if (d > 0) {
+            showDelay(D.settings.delay);
             timer = setTimeout(function() {
                 removeDelay();
                 doResponse();
-            }, fetchDelay);
+            }, d);
         } else {
-            updateWaitBtn();
+            doResponse();
         }
+    });
+} else {
+    updateWaitBtn();
+}
 
-        return; 
+        return;
     } else {
         msg = { role: 'user', content: text, time: Date.now() };
     }
@@ -1710,6 +1826,14 @@ function openChatEdit() {
     updateWpPreview('chatWpPreview', curChar.chatWp);
     renderWbSelect();
     updateTokenStats();
+// ★ 角色独立模型
+$('charCustomModelOn').checked = !!curChar.useCustomModel;
+$('charModelApiUrl').value = curChar.customApiUrl || '';
+$('charModelApiKey').value = curChar.customApiKey || '';
+$('charModelManual').value = '';
+$('charModelFetchResult').style.display = 'none';
+renderCharModelSelect(curChar.customModel || '', curChar._cachedModels || D.api.models || []);
+toggleCharCustomModel();
     openModal('chatEditModal');
 }
 
@@ -1736,6 +1860,20 @@ function saveChatEdit() {
     curChar.showHeartRate = $('showHeartRateOn').checked;
     curChar.avatar = $('editChatAvatar').dataset.val || '';
     curChar.callMemoryCount = parseInt($('callMemoryCount').value) || 0;
+
+// ★ 角色独立模型
+curChar.useCustomModel = $('charCustomModelOn').checked;
+if (curChar.useCustomModel) {
+    // 手动输入优先于下拉选择
+    var manualModel = $('charModelManual').value.trim();
+    curChar.customModel = manualModel || $('charCustomModel').value.trim();
+    curChar.customApiUrl = $('charModelApiUrl').value.trim();
+    curChar.customApiKey = $('charModelApiKey').value.trim();
+} else {
+    curChar.customModel = '';
+    curChar.customApiUrl = '';
+    curChar.customApiKey = '';
+}
     
       // 保存AI邮箱号
     var newEmail = $('editChatEmailAddress').value.trim();
@@ -1792,20 +1930,80 @@ function clearChat() {
 }
 function updateTokenStats() {
     var sys = estTokens(buildSysPrompt());
-    var char = estTokens(curChar.persona || '');
+    var charPersona = estTokens(curChar.persona || '');
     var acc = getCurAcc();
-    var user = estTokens(acc?.desc || '');
+    var user = estTokens(acc && acc.desc || '');
     var data = getAccData();
+
+    // 跟 buildMessages 用同一套规则，确保统计和真实发送量对齐
+    var memCount = curChar.memoryCount || 20;
+    var msgs = (data.chats[curChar.id] || [])
+        .filter(function(m) { return m.type !== 'sys' && !m.recalled; })
+        .slice(-memCount);
+
+    // 找最后一条AI的位置，配合"图片仅一轮"判断
+    var lastAiIdx = -1;
+    for (var li = msgs.length - 1; li >= 0; li--) {
+        if (msgs[li].role === 'ai') { lastAiIdx = li; break; }
+    }
+    var imageOneRoundMode = !D.settings.autoImageDesc && D.settings.imageOneRound !== false;
+
     var hist = 0;
-    (data.chats[curChar.id] || []).slice(-(curChar.memoryCount || 20)).forEach(function(m) { hist += estTokens(m.content || ''); });
+    var imgCount = 0;
+
+    msgs.forEach(function(m, i) {
+        // 引用块也会真发出去
+        if (m.quoteContent) hist += estTokens(m.quoteContent);
+
+        if (m.type === 'image') {
+            var hasUserImage = m.role === 'user' && m.imageUrl;
+            var hasDesc = !!m.imageDesc;
+            var useVision = false;
+            if (hasUserImage && !hasDesc) {
+                useVision = imageOneRoundMode ? (i > lastAiIdx) : true;
+            }
+            if (useVision) {
+                hist += 300; // 一张 vision 图按 ~300 token 估（Gemini 默认值）
+                imgCount++;
+            } else {
+                hist += estTokens('[图片: ' + (m.imageDesc || '用户之前发送过的图片') + ']');
+            }
+        } else if (m.type === 'voice') {
+            hist += estTokens('[语音: ' + (m.content || '') + ']');
+        } else if (m.type === 'sticker') {
+            hist += estTokens('[表情包: ' + (m.stickerDesc || '') + ']');
+        } else if (m.type === 'transfer') {
+            hist += estTokens('[转账 ¥' + (m.amount || 0) + ' ' + (m.remark || '') + ']');
+        } else if (m.type === 'location' || m.type === 'invite') {
+            hist += estTokens('[位置: ' + (m.placeName || '') + '] ' + (m.content || ''));
+        } else if (m.type === 'link') {
+            // 链接消息：附言 + 标题/简介 + 网页正文（截4000字）+ 抠到的图片
+            hist += estTokens(getDisplayContent ? getDisplayContent(m) : (m.content || ''));
+            if (m.linkTitle) hist += estTokens(m.linkTitle);
+            if (m.linkDesc)  hist += estTokens(m.linkDesc);
+            if (m.linkFullText) {
+                hist += estTokens(m.linkFullText.slice(0, 4000));
+                var imgRe = /!\[.*?\]\(https?:\/\//g;
+                var matched = (m.linkFullText.match(imgRe) || []).length;
+                var n = Math.min(matched, 6);
+                if (n > 0) {
+                    hist += n * 300;
+                    imgCount += n;
+                }
+            }
+        } else {
+            hist += estTokens(m.content || '');
+        }
+    });
+
     var wb = estTokens(getWbContent(curChar));
-    
-    $('tkSys').textContent = sys;
-    $('tkChar').textContent = char;
+
+    $('tkSys').textContent  = sys;
+    $('tkChar').textContent = charPersona;
     $('tkUser').textContent = user;
-    $('tkHist').textContent = hist;
-    $('tkWb').textContent = wb;
-    $('tkTotal').textContent = (sys + char + user + hist + wb) + ' tokens';
+    $('tkHist').textContent = hist + (imgCount > 0 ? ' (含 ' + imgCount + ' 张图)' : '');
+    $('tkWb').textContent   = wb;
+    $('tkTotal').textContent = (sys + charPersona + user + hist + wb) + ' tokens';
 }
 function toggleFunc() { $('funcPanel').classList.toggle('active'); }
 function closeFunc() { $('funcPanel').classList.remove('active'); }
@@ -1907,63 +2105,44 @@ function genAiImage() {
     img.src = url;
 }
 
-async function onImageSelect(e) {
-    var f = e.target.files[0];
-    if (!f) return;
-    e.target.value = '';
 
-    // 新增：封禁检查（图片发送前）
-    var ok = await riskStatusCheck();
-    if (!ok) {
-        toast(window.__RISK_BAN_MSG__ || '账号已被封禁');
+function compressImg(dataUrl, cb) {
+    var maxSize = D.settings.imgSize;
+    var quality = D.settings.imgQuality || 0.6;
+
+    // ===== 原图直发模式：不压缩 =====
+    if (maxSize === 0) {
+        console.log('[图片] 原图直发模式');
+
+        var useHost = D.settings && D.settings.useImageHost === true;
+        var hasKey = D.settings && D.settings.imgbbKey && D.settings.imgbbKey.trim().length > 5;
+
+        if (useHost && hasKey) {
+            toast('☁️ 正在上传原图到图床...');
+            uploadImageToImgBB(dataUrl, function(url) {
+                if (url) {
+                    console.log('[图床] ✅ 原图上传成功:', url);
+                    toast('✅ 原图上传成功');
+                    cb(url);
+                } else {
+                    console.warn('[图床] ❌ 失败，回退原图 base64');
+                    toast('图床上传失败，使用本地原图');
+                    cb(dataUrl);
+                }
+            });
+        } else {
+            if (!useHost) toast('⚠️ 原图直发（未开图床，使用base64）');
+            cb(dataUrl);
+        }
         return;
     }
 
-    toast('处理中...');
+    // ===== 正常压缩模式 =====
+    if (!maxSize || maxSize < 0) maxSize = 512;
 
-    var reader = new FileReader();
-    reader.onload = function(ev) {
-        compressImg(ev.target.result, function(compressed) {
-            if ($('publishPage').classList.contains('active')) {
-                // 朋友圈：先添加base64，然后后台识图生成描述
-                pubImages.push({ url: compressed, desc: '' });
-                renderPubImages();
-                checkPublish();
-                toast('图片已添加，正在识别...');
-
-                recognizeImage(compressed, function(desc) {
-                    if (pubImages.length > 0) {
-                        pubImages[pubImages.length - 1].desc = desc;
-                        renderPubImages();
-                    }
-                });
-            } else if (curChar) {
-                var msgIdx = appendMsg({ role: 'user', type: 'image', imageUrl: compressed, imageDesc: '', time: Date.now() });
-                toast('正在识别图片...');
-                recognizeImage(compressed, function(desc) {
-                    var data = getAccData();
-                    var charId = curChar ? curChar.id : null;
-                    if (!charId) return;
-                    if (data.chats[charId] && data.chats[charId][msgIdx]) {
-                        data.chats[charId][msgIdx].imageDesc = desc;
-                        save();
-                        renderMsgs(false);
-                    }
-                    toast('图片已识别');
-                    triggerAutoReply();
-                });
-            }
-        });
-    };
-    reader.readAsDataURL(f);
-}
-
-function compressImg(dataUrl, cb) {
     var img = new Image();
     img.onload = function() {
         var canvas = document.createElement('canvas');
-        var maxSize = D.settings.imgSize || 512;
-        var quality = D.settings.imgQuality || 0.6;
         var w = img.width, h = img.height;
         if (w > maxSize || h > maxSize) {
             if (w > h) { h = h * maxSize / w; w = maxSize; }
@@ -1971,7 +2150,41 @@ function compressImg(dataUrl, cb) {
         }
         canvas.width = w; canvas.height = h;
         canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        cb(canvas.toDataURL('image/jpeg', quality));
+        var compressed = canvas.toDataURL('image/jpeg', quality);
+
+        // ===== 诊断日志 =====
+        console.log('[图床] useImageHost =', D.settings.useImageHost);
+        console.log('[图床] imgbbKey =', D.settings.imgbbKey ? '有值(' + D.settings.imgbbKey.length + '位)' : '空');
+
+        var useHost = D.settings && D.settings.useImageHost === true;
+        var hasKey = D.settings && D.settings.imgbbKey && D.settings.imgbbKey.trim().length > 5;
+
+        if (useHost && hasKey) {
+            toast('☁️ 正在上传到图床...');
+            console.log('[图床] 开始上传');
+            uploadImageToImgBB(compressed, function(url) {
+                if (url) {
+                    console.log('[图床] ✅ 成功:', url);
+                    toast('✅ 图床上传成功');
+                    cb(url);
+                } else {
+                    console.warn('[图床] ❌ 失败，回退 base64');
+                    toast('图床上传失败，改用本地图片');
+                    cb(compressed);
+                }
+            });
+        } else {
+            if (!useHost) {
+                console.warn('[图床] 未开启');
+            } else if (!hasKey) {
+                console.warn('[图床] Key 未填写或太短');
+            }
+            cb(compressed);
+        }
+    };
+    img.onerror = function() {
+        toast('图片加载失败');
+        cb(null);
     };
     img.src = dataUrl;
 }
@@ -2008,9 +2221,8 @@ function editMsgContent() {
     var charId = curChar ? curChar.id : respondingCharId;
     var msg = data.chats[charId][selectedMsgIdx];
     if (!msg) { hideMsgMenu(); return; }
-    
-    // ✅ 关键修复：先保存索引到弹窗的dataset，再关闭菜单
-    $('editMsgModal').dataset.msgIdx = selectedMsgIdx;
+
+    $('editMsgModal').dataset.msgId = msg.id;
     $('editMsgModal').dataset.charId = charId;
     $('editMsgText').value = msg.content || '';
     hideMsgMenu();
@@ -2020,26 +2232,52 @@ function editMsgContent() {
 function saveEditMsg() {
     var content = $('editMsgText').value.trim();
     if (!content) return toast('内容不能为空');
-    
+
     var data = getAccData();
-    // ✅ 关键修复：从dataset读取保存的索引
     var charId = $('editMsgModal').dataset.charId;
-    var msgIdx = parseInt($('editMsgModal').dataset.msgIdx);
-    
-    if (isNaN(msgIdx) || msgIdx < 0) {
+    var msgId = $('editMsgModal').dataset.msgId;
+
+    if (!charId || !msgId) {
         closeModal('editMsgModal');
-        return toast('保存失败：索引无效');
+        return toast('保存失败');
     }
-    
-    if (data.chats[charId] && data.chats[charId][msgIdx]) {
-        data.chats[charId][msgIdx].content = content;
-        save();
-        renderMsgs(false);
-        toast('已保存');
-    } else {
-        toast('保存失败：消息不存在');
+
+    var list = data.chats[charId] || [];
+    var msg = list.find(function(m) { return m.id === msgId; });
+    if (!msg) {
+        closeModal('editMsgModal');
+        return toast('保存失败：消息不存在');
     }
+
+    msg.content = content;
+    msg.editTime = Date.now();
+
+    if (msg.type !== 'sys') {
+        msg.quoteAnchors = buildQuoteAnchorsFromText(
+            getMsgPlainTextForQuote(msg),
+            msg.id,
+            msg.time
+        );
+    }
+
+    // 同步更新所有引用了这条消息的后续消息
+    list.forEach(function(m) {
+        if (m.quoteMsgId === msg.id) {
+            m.quoteContent = getMsgPlainTextForQuote(msg).slice(0, 50);
+            if (Array.isArray(m.quoteAnchors) && m.quoteAnchors.length) {
+                m.quoteAnchors = buildQuoteAnchorsFromText(
+                    getMsgPlainTextForQuote(m),
+                    m.id,
+                    m.time
+                );
+            }
+        }
+    });
+
+    save();
+    renderMsgs(false);
     closeModal('editMsgModal');
+    toast('已保存');
 }
 
 function recognizeImage(imageData, callback) {
@@ -2967,6 +3205,38 @@ async function fetchPageContent(url) {
 
     showFetchProgress();
     
+    // ===== 短链预解析：跟随302拿到真实URL =====
+    if (/xhslink\.com|b23\.tv|t\.cn|dwz\.cn|url\.cn/i.test(url)) {
+        updateFetchProgress(-1, '🔗 解析短链', 'loading', '跟随跳转...');
+        try {
+            var resolveResp = await Promise.race([
+                fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(url), { redirect: 'follow' }),
+                new Promise(function(_, rej) { setTimeout(function(){ rej(new Error('超时')); }, 8000); })
+            ]);
+            // allorigins 会跟随跳转，最终URL在 response.url 或从HTML中提取
+            var resolvedHtml = await resolveResp.text();
+            // 尝试从HTML中提取真实URL（小红书会在meta里放）
+            var canonicalMatch = resolvedHtml.match(/<link[^>]*rel\s*=\s*["']canonical["'][^>]*href\s*=\s*["']([^"']+)["']/i)
+                || resolvedHtml.match(/<meta[^>]*property\s*=\s*["']og:url["'][^>]*content\s*=\s*["']([^"']+)["']/i);
+            if (canonicalMatch && canonicalMatch[1] && /^https?:\/\//.test(canonicalMatch[1])) {
+                url = canonicalMatch[1];
+                updateFetchProgress(-1, '🔗 解析短链', 'ok', url.slice(0, 50));
+            } else {
+                // 尝试从 location.href 或 window.location 提取
+                var locMatch = resolvedHtml.match(/location\.href\s*=\s*["'](https?:\/\/[^"']+)["']/i)
+                    || resolvedHtml.match(/window\.location\s*=\s*["'](https?:\/\/[^"']+)["']/i);
+                if (locMatch && locMatch[1]) {
+                    url = locMatch[1];
+                    updateFetchProgress(-1, '🔗 解析短链', 'ok', url.slice(0, 50));
+                } else {
+                    updateFetchProgress(-1, '🔗 解析短链', 'fail', '未能解析');
+                }
+            }
+        } catch(e) {
+            updateFetchProgress(-1, '🔗 解析短链', 'fail', (e && e.message) || '出错');
+        }
+    }
+
     var isHardSite = /xiaohongshu|xhslink|douyin|tiktok|weibo|bilibili|zhihu|baidu/.test(url);
 
     // ===== 8 大抓取通道 =====
@@ -2975,27 +3245,37 @@ async function fetchPageContent(url) {
     var channels = [
         {
             name: '① Jina读取',
-            skip: isHardSite,
             run: function() {
+                var headers = {
+                    'Accept': 'text/markdown',
+                    'X-Return-Format': 'markdown',
+                    'X-Timeout': isHardSite ? '25' : '8',
+                    'X-No-Cache': 'true'
+                };
+                if (/xiaohongshu|xhslink/.test(url)) {
+                    headers['X-Wait-For-Selector'] = '.note-content, #noteContainer, [data-note-id]';
+                }
                 return Promise.race([
-                    fetch('https://r.jina.ai/' + url, {
-                        headers: { 'Accept': 'text/markdown', 'X-Timeout': '8', 'X-Return-Format': 'markdown', 'X-No-Cache': 'true' }
-                    }).then(function(r) { return r.text(); }),
-                    new Promise(function(_, rej) { setTimeout(function(){ rej(new Error('超时')); }, 10000); })
+                    fetch('https://r.jina.ai/' + url, { headers: headers })
+                        .then(function(r) { return r.text(); }),
+                    new Promise(function(_, rej) { setTimeout(function(){ rej(new Error('超时')); }, isHardSite ? 30000 : 10000); })
                 ]);
             }
         },
         {
             name: '② Jina手机版',
-            skip: isHardSite,
             run: function() {
                 var mob = toMobileUrl(url);
                 if (mob === url) return Promise.reject(new Error('无手机版'));
+                var headers = {
+                    'Accept': 'text/markdown',
+                    'X-Return-Format': 'markdown',
+                    'X-Timeout': isHardSite ? '25' : '8'
+                };
                 return Promise.race([
-                    fetch('https://r.jina.ai/' + mob, {
-                        headers: { 'Accept': 'text/markdown', 'X-Timeout': '8', 'X-Return-Format': 'markdown' }
-                    }).then(function(r) { return r.text(); }),
-                    new Promise(function(_, rej) { setTimeout(function(){ rej(new Error('超时')); }, 10000); })
+                    fetch('https://r.jina.ai/' + mob, { headers: headers })
+                        .then(function(r) { return r.text(); }),
+                    new Promise(function(_, rej) { setTimeout(function(){ rej(new Error('超时')); }, isHardSite ? 30000 : 10000); })
                 ]);
             }
         },
@@ -3108,7 +3388,24 @@ async function fetchPageContent(url) {
                     new Promise(function(_, rej) { setTimeout(function(){ rej(new Error('超时')); }, 10000); })
                 ]);
             }
-        }
+},
+        {
+            name: '⑪ Thum.io截图',
+            run: function() {
+                // thum.io 是另一个截图服务，对中国站点兼容性更好
+                var thumbUrl = 'https://image.thum.io/get/width/414/crop/1200/noanimate/' + url;
+                return Promise.race([
+                    fetch(thumbUrl, { method: 'HEAD' }).then(function(r) {
+                        if (r.ok) {
+                            _collectedImages.push(thumbUrl);
+                            return '__SCREENSHOT__' + thumbUrl;
+                        }
+                        throw new Error('截图不可用');
+                    }),
+                    new Promise(function(_, rej) { setTimeout(function(){ rej(new Error('超时')); }, 15000); })
+                ]);
+            }
+        },
     ];
 
     // 逐个尝试
@@ -3124,17 +3421,76 @@ async function fetchPageContent(url) {
         updateFetchProgress(i, ch.name, 'loading', '请求中...');
         try {
             var text = await ch.run();
+                
             if (text && text.length > 80 && !isBlockedContent(text)) {
-                updateFetchProgress(i, ch.name, 'ok', text.length + '字');
+// ===== 硬站点质量二次校验 =====
+if (isHardSite && text.length < 800) {
+    // 统计中文字符总数（不要求连续）
+    var cnChars = (text.match(/[\u4e00-\u9fa5]/g) || []).length;
+    var hasRealContent = cnChars >= 30 &&
+        !/请在App内打开|打开APP查看|下载App|登录后查看|请在App查看/.test(text);
+    if (!hasRealContent) {
+        var reason2 = '硬站点内容质量不足(' + text.length + '字,中文' + cnChars + '字)';
+        updateFetchProgress(i, ch.name, 'fail', reason2);
+        if (text.length > bestText.length) { bestText = text; }
+        continue;
+    }
+}
+                // ===== 质量校验通过，正常处理 =====
+
+updateFetchProgress(i, ch.name, 'ok', text.length + '字');
                 var titleMatch = text.match(/^#\s+(.+)/m) || text.match(/【(.+?)】/);
-                closeFetchProgress(true, text.length);
                 var extractedImages = extractImagesFromHtml(_lastRawHtml);
-                // 合并所有通道收集到的图片
                 var allImages = _collectedImages.concat(extractedImages);
                 var uniqueImages = [];
                 allImages.forEach(function(img) {
                     if (img && uniqueImages.indexOf(img) < 0) uniqueImages.push(img);
                 });
+
+                // ===== 并行截图：开关开启时，无论文字是否抓到，都截一张长图 =====
+                if (D.settings.linkScreenshot !== false) {
+                    updateFetchProgress(99, '📸 并行截图', 'loading', '正在截图...');
+                    try {
+                        var parallelResp = await Promise.race([
+                            fetch('https://api.microlink.io/?url=' + encodeURIComponent(url) +
+                                  '&screenshot=true&meta=false&waitFor=3000&viewport.width=414&viewport.height=896&fullPage=true'),
+                            new Promise(function(_, rej) { setTimeout(function(){ rej(new Error('超时')); }, 20000); })
+                        ]);
+                        var parallelJson = await parallelResp.json();
+                        var parallelUrl = parallelJson && parallelJson.data && parallelJson.data.screenshot && parallelJson.data.screenshot.url;
+                        if (parallelUrl) {
+                            updateFetchProgress(99, '📸 并行截图', 'ok', '截图成功');
+                            // 截图放在图片列表最前面，确保AI一定能看到
+                            if (uniqueImages.indexOf(parallelUrl) < 0) {
+                                uniqueImages.unshift(parallelUrl);
+                            }
+                        } else {
+                            updateFetchProgress(99, '📸 并行截图', 'fail', '截图为空');
+                        }
+                              } catch (e) {
+                        updateFetchProgress(99, '📸 并行截图(Microlink)', 'fail', (e && e.message) || '出错');
+                        // Microlink失败，尝试 thum.io
+                        try {
+                            var thumbUrl2 = 'https://image.thum.io/get/width/414/crop/1200/noanimate/' + url;
+                            var thumbResp = await Promise.race([
+                                fetch(thumbUrl2, { method: 'HEAD' }),
+                                new Promise(function(_, rej) { setTimeout(function(){ rej(new Error('超时')); }, 12000); })
+                            ]);
+                            if (thumbResp.ok) {
+                                updateFetchProgress(99, '📸 并行截图(thum.io)', 'ok', '截图成功');
+                                if (uniqueImages.indexOf(thumbUrl2) < 0) {
+                                    uniqueImages.unshift(thumbUrl2);
+                                }
+                            } else {
+                                updateFetchProgress(99, '📸 并行截图(thum.io)', 'fail', 'HTTP ' + thumbResp.status);
+                            }
+                        } catch(e2) {
+                            updateFetchProgress(99, '📸 并行截图(thum.io)', 'fail', (e2 && e2.message) || '出错');
+                        }
+                    }
+                }
+
+                closeFetchProgress(true, text.length);
                 _lastRawHtml = '';
                 _collectedImages = [];
                 return { 
@@ -3167,13 +3523,132 @@ async function fetchPageContent(url) {
         allFbImages.forEach(function(img) {
             if (img && uniqueFbImages.indexOf(img) < 0) uniqueFbImages.push(img);
         });
+
+        // ===== 文字抓到了但图片一张没有 → 截图兜底 =====
+        if (uniqueFbImages.length === 0 && isHardSite) {
+            updateFetchProgress(99, '⑪ 截图兜底', 'loading', '正在截图...');
+            try {
+                var shotResp2 = await Promise.race([
+                    fetch('https://api.microlink.io/?url=' + encodeURIComponent(url) +
+                          '&screenshot=true&meta=false&waitFor=3000&viewport.width=414&viewport.height=896&fullPage=true'),
+                    new Promise(function(_, rej) { setTimeout(function(){ rej(new Error('超时')); }, 25000); })
+                ]);
+                var shotJson2 = await shotResp2.json();
+                var shotUrl2 = shotJson2 && shotJson2.data && shotJson2.data.screenshot && shotJson2.data.screenshot.url;
+                if (shotUrl2) {
+                    updateFetchProgress(99, '⑪ 截图兜底', 'ok', '截图成功');
+                    uniqueFbImages.push(shotUrl2);
+                } else {
+                    updateFetchProgress(99, '⑪ 截图兜底', 'fail', '截图为空');
+                }
+            } catch (e) {
+                updateFetchProgress(99, '⑪ 截图兜底', 'fail', (e && e.message) || '出错');
+            }
+        }
+
         _lastRawHtml = '';
         _collectedImages = [];
         return { text: bestText, title: bestTitle, ok: true, images: uniqueFbImages };
     }
 
+    // ===== 文字也没抓到 → 纯截图模式 =====
+    updateFetchProgress(99, '⑪ 网页截图', 'loading', '正在截图...');
+    try {
+        var shotResp = await Promise.race([
+            fetch('https://api.microlink.io/?url=' + encodeURIComponent(url) +
+                  '&screenshot=true&meta=false&waitFor=3000&viewport.width=414&viewport.height=896&fullPage=true'),
+            new Promise(function(_, rej) { setTimeout(function(){ rej(new Error('超时')); }, 25000); })
+        ]);
+        var shotJson = await shotResp.json();
+        var shotUrl = shotJson && shotJson.data && shotJson.data.screenshot && shotJson.data.screenshot.url;
+        if (shotUrl) {
+            updateFetchProgress(99, '⑪ 网页截图', 'ok', '截图成功');
+            closeFetchProgress(true, 0);
+            _lastRawHtml = '';
+            _collectedImages = [];
+            return {
+                text: '__SCREENSHOT__' + shotUrl,
+                title: bestTitle,
+                ok: true,
+                images: _collectedImages.length ? _collectedImages : [shotUrl]
+            };
+        }
+        updateFetchProgress(99, '⑪ 网页截图', 'fail', '截图为空');
+    } catch (e) {
+        updateFetchProgress(99, '⑪ 网页截图', 'fail', (e && e.message) || '出错');
+    }
+
     closeFetchProgress(false, 0);
+    _lastRawHtml = '';
+    _collectedImages = [];
     return { text: '', title: '', ok: false, images: [] };
+}
+// ===== 平台搜索页兜底（搜不到时直接给搜索结果页URL）=====
+function platformSearchFallback(query) {
+    var q = String(query || '').trim();
+    if (!q) return null;
+
+    var platforms = [
+        { keys: ['bilibili', 'b站', '哔哩', 'B站'], url: 'https://search.bilibili.com/all?keyword=', site: 'B站' },
+        { keys: ['网易云', '网易音乐'], url: 'https://music.163.com/#/search/m/?s=', site: '网易云音乐' },
+        { keys: ['qq音乐', 'QQ音乐'], url: 'https://y.qq.com/n/ryqq/search?w=', site: 'QQ音乐' },
+        { keys: ['酷狗'], url: 'https://www.kugou.com/yy/html/search.html#searchType=song&searchKeyWord=', site: '酷狗' },
+        { keys: ['知乎'], url: 'https://www.zhihu.com/search?type=content&q=', site: '知乎' },
+        { keys: ['微博'], url: 'https://s.weibo.com/weibo?q=', site: '微博' },
+        { keys: ['小红书', '红薯', 'xhs'], url: 'https://www.xiaohongshu.com/search_result?keyword=', site: '小红书' },
+        { keys: ['抖音'], url: 'https://www.douyin.com/search/', site: '抖音' },
+        { keys: ['豆瓣'], url: 'https://search.douban.com/movie/subject_search?search_text=', site: '豆瓣' },
+        { keys: ['淘宝'], url: 'https://s.taobao.com/search?q=', site: '淘宝' },
+        { keys: ['京东'], url: 'https://search.jd.com/Search?keyword=', site: '京东' },
+        { keys: ['github', 'GitHub'], url: 'https://github.com/search?q=', site: 'GitHub' },
+        { keys: ['youtube', 'YouTube', '油管'], url: 'https://www.youtube.com/results?search_query=', site: 'YouTube' },
+        { keys: ['百度'], url: 'https://www.baidu.com/s?wd=', site: '百度' },
+        { keys: ['必应', 'bing'], url: 'https://www.bing.com/search?q=', site: '必应' }
+    ];
+
+    var matched = null;
+    var cleanQuery = q;
+
+    for (var i = 0; i < platforms.length; i++) {
+        for (var j = 0; j < platforms[i].keys.length; j++) {
+            var k = platforms[i].keys[j];
+            if (q.toLowerCase().indexOf(k.toLowerCase()) >= 0) {
+                matched = platforms[i];
+                cleanQuery = q.replace(new RegExp(k, 'gi'), '').replace(/\s+/g, ' ').trim();
+                break;
+            }
+        }
+        if (matched) break;
+    }
+
+    // 没识别到平台 → 用必应搜索（国内能打开，结果质量也行）
+    if (!matched) {
+        return {
+            url: 'https://www.bing.com/search?q=' + encodeURIComponent(q),
+            title: q,
+            desc: '点击查看"' + q + '"的搜索结果'
+        };
+    }
+
+    if (!cleanQuery) cleanQuery = q;
+    return {
+        url: matched.url + encodeURIComponent(cleanQuery),
+        title: cleanQuery + ' - ' + matched.site,
+        desc: '在' + matched.site + '中搜索"' + cleanQuery + '"'
+    };
+}
+
+// ===== 多通道搜索：jina失败就给平台搜索页 =====
+async function smartLinkSearch(query) {
+    // 优先 jina（拿到的是具体内容URL，最理想）
+    try {
+        var results = await jinaSearch(query);
+        if (results && results.length && results[0].url) return results;
+    } catch(e) {}
+
+    // jina 拿不到 → 平台搜索页兜底（一定能打开）
+    var fb = platformSearchFallback(query);
+    return fb ? [fb] : [];
 }
 
 // ===== 从HTML中提取图片URL =====
@@ -3387,7 +3862,7 @@ function writeFetchedContent(fm, url, pageText) {
 
     // 提取图片
     var imgM = pageText.match(/!\[.*?\]\((https?:\/\/[^\s\)]+(?:\.jpg|\.jpeg|\.png|\.webp|\.gif)[^\s\)]*)\)/i);
-    if (imgM && !fm.linkImage) fm.linkImage = imgM[1];
+if (imgM && !fm.linkImage) fm.linkImage = wrapProxyImg(imgM[1]);
 }
 
 // ===== AI发链接：搜索真实链接替换编造的 =====
@@ -3398,7 +3873,57 @@ async function processAiLinkMsg(charId, msgIdx) {
     msg._aiVerified = true;
     save();
 
-    // 提取AI想分享什么（搜索意图）
+    // ===== 真实URL分支：直接抓取页面 =====
+    if (msg.linkUrl && /^https?:\/\//i.test(msg.linkUrl)) {
+        // 先快速设置 favicon 和域名
+        try {
+            var _dom = new URL(msg.linkUrl).hostname;
+            if (!msg.linkFavicon) msg.linkFavicon = 'https://www.google.com/s2/favicons?domain=' + _dom + '&sz=64';
+            if (!msg.linkTitle || msg.linkTitle === 'virtual') msg.linkTitle = _dom;
+        } catch(e) {}
+        msg.linkVirtual = false;
+        save();
+        if (curChar && curChar.id === charId && !responding) renderMsgs(false);
+
+        // 异步抓取完整内容
+        var _page = await fetchPageContent(msg.linkUrl);
+        var _fd = getAccData();
+        var _fm = _fd.chats[charId] && _fd.chats[charId][msgIdx];
+        if (!_fm) return;
+
+        if (_page.ok) {
+            if (_page.title) _fm.linkTitle = _page.title;
+            var _dc = _page.text.replace(/^#.+\n/gm, '').replace(/!\[.*?\]\(.*?\)/g, '').trim();
+            if (_dc.length > 10) _fm.linkDesc = _dc.slice(0, 150);
+            writeFetchedContent(_fm, _fm.linkUrl, _page.text);
+            // 提取封面图
+            if (_page.images && _page.images.length && !_fm.linkImage) {
+    _fm.linkImage = wrapProxyImg(_page.images[0]);
+}
+        } else {
+            // 真URL抓取失败 → 降级走搜索
+            var _fallbackIntent = [_fm.linkTitle, _fm.linkDesc, getDisplayContent(_fm)]
+                .filter(function(s) { return s && s.trim(); }).join(' ').trim();
+            if (_fallbackIntent) {
+                var _sr = await smartLinkSearch(_fallbackIntent);
+                if (_sr.length && _sr[0].url) {
+                    _fm.linkUrl = _sr[0].url;
+                    if (_sr[0].title) _fm.linkTitle = _sr[0].title;
+                    if (_sr[0].desc) _fm.linkDesc = _sr[0].desc;
+                    try { _fm.linkFavicon = 'https://www.google.com/s2/favicons?domain=' + new URL(_sr[0].url).hostname + '&sz=64'; } catch(e) {}
+                } else {
+                    _fm.linkDesc = _fm.linkDesc || '内容暂时无法读取';
+                }
+            } else {
+                _fm.linkDesc = _fm.linkDesc || '内容暂时无法读取';
+            }
+        }
+        save();
+        if (curChar && curChar.id === charId && !responding) renderMsgs(false);
+        return;
+    }
+
+    // ===== Virtual 分支：搜索还原真实链接 =====
     var dispContent = getDisplayContent(msg);
     var intent = typeof normalizeAiLinkQuery === 'function'
         ? normalizeAiLinkQuery(msg.linkTitle, msg.linkDesc, dispContent)
@@ -3408,15 +3933,13 @@ async function processAiLinkMsg(charId, msgIdx) {
             .trim();
     if (!intent) intent = 'interesting link';
 
-    // 用搜索引擎搜索真实链接
-    var results = await jinaSearch(intent);
+    var results = await smartLinkSearch(intent);
 
     var fd = getAccData();
     var fm = fd.chats[charId] && fd.chats[charId][msgIdx];
     if (!fm) return;
 
     if (!results.length || !results[0].url) {
-        // 搜索失败 → 降级为纯文字
         var fallback = getDisplayContent(fm) || '';
         delete fm.type; delete fm.linkUrl; delete fm.linkTitle; delete fm.linkDesc;
         delete fm.linkFavicon; delete fm.linkImage; delete fm.linkFullText;
@@ -3426,11 +3949,11 @@ async function processAiLinkMsg(charId, msgIdx) {
         return;
     }
 
-    // 用真实链接替换AI编造的
     var best = results[0];
     fm.linkUrl = best.url;
     fm.linkTitle = best.title || fm.linkTitle || '';
     fm.linkDesc = best.desc || '';
+    fm.linkVirtual = false;
     try {
         fm.linkFavicon = 'https://www.google.com/s2/favicons?domain=' + new URL(best.url).hostname + '&sz=64';
     } catch(e) {}
@@ -3438,7 +3961,6 @@ async function processAiLinkMsg(charId, msgIdx) {
     save();
     if (curChar && curChar.id === charId && !responding) renderMsgs(false);
 
-    // 异步抓取完整内容
     var page = await fetchPageContent(best.url);
     fd = getAccData();
     fm = fd.chats[charId] && fd.chats[charId][msgIdx];
@@ -3449,13 +3971,53 @@ async function processAiLinkMsg(charId, msgIdx) {
         var descClean = page.text.replace(/^#.+\n/gm,'').replace(/!\[.*?\]\(.*?\)/g,'').trim();
         if (descClean.length > 10) fm.linkDesc = descClean.slice(0, 150);
         writeFetchedContent(fm, fm.linkUrl, page.text);
+if (page.images && page.images.length && !fm.linkImage) fm.linkImage = wrapProxyImg(page.images[0]);
     } else {
-        // 至少用搜索摘要
         writeFetchedContent(fm, fm.linkUrl, best.title + '\n' + best.desc);
     }
 
     save();
     if (curChar && curChar.id === charId && !responding) renderMsgs(false);
+}
+
+// ===== 通过代理把远程图片转为 base64（绕过防盗链）=====
+async function fetchImageAsBase64(imgUrl, timeout) {
+    timeout = timeout || 12000;
+    // 已经是 base64 就直接返回
+    if (imgUrl.indexOf('data:') === 0) return imgUrl;
+
+    // 用 wsrv.nl 代理绕过防盗链
+    var proxyUrl = 'https://wsrv.nl/?url=' + encodeURIComponent(imgUrl) + '&w=800&output=jpg&q=75';
+
+    try {
+        var resp = await Promise.race([
+            fetch(proxyUrl),
+            new Promise(function(_, rej) { setTimeout(function() { rej(new Error('图片下载超时')); }, timeout); })
+        ]);
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        var blob = await resp.blob();
+        if (!blob || blob.size < 500) throw new Error('图片太小或为空');
+
+        return await new Promise(function(resolve, reject) {
+            var reader = new FileReader();
+            reader.onload = function() { resolve(reader.result); };
+            reader.onerror = function() { reject(new Error('读取失败')); };
+            reader.readAsDataURL(blob);
+        });
+    } catch (e) {
+        console.warn('[fetchImageAsBase64] 失败:', imgUrl, e.message);
+        return '';
+    }
+}
+
+function wrapProxyImg(url) {
+    if (!url) return '';
+    if (url.indexOf('data:') === 0) return url;
+    if (url.indexOf('wsrv.nl') !== -1) return url;
+    // 这些公开图床不防盗链，不需要代理
+    if (url.indexOf('microlink.io') !== -1) return url;
+    if (url.indexOf('thum.io') !== -1) return url;
+    return 'https://wsrv.nl/?url=' + encodeURIComponent(url);
 }
 
 // ===== 用户发链接：抓取内容让AI可见 =====
@@ -3467,6 +4029,7 @@ async function processUserLinkMsg(charId, msgIdx) {
     if (msg.content && msg.content.indexOf('{{FETCHED_LINK_DATA}}') >= 0 && msg.linkFullText && msg.linkFullText.length > 100) return;
 
     var url = msg.linkUrl;
+    var isHardSite = /xiaohongshu|xhslink|douyin|tiktok|weibo|bilibili|zhihu|baidu/.test(url);
 
     // 先快速获取meta信息（图标、封面）
     if (typeof fetchLinkMeta === 'function') {
@@ -3477,7 +4040,7 @@ async function processUserLinkMsg(charId, msgIdx) {
                 if (meta.title) m2.linkTitle = meta.title;
                 if (meta.desc) m2.linkDesc = meta.desc;
                 if (meta.favicon) m2.linkFavicon = meta.favicon;
-                if (meta.image) m2.linkImage = meta.image;
+if (meta.image) m2.linkImage = wrapProxyImg(meta.image);
                 save();
                 if (curChar && curChar.id === charId && !responding) renderMsgs(false);
             }
@@ -3499,7 +4062,25 @@ async function processUserLinkMsg(charId, msgIdx) {
         }
 
         // 关键：喂饭格式，让AI必须看到
-        fm.linkFullText = page.text.slice(0, 5000);
+        // 如果是截图模式（文字以 __SCREENSHOT__ 开头）
+        if (page.text.indexOf('__SCREENSHOT__') === 0) {
+            fm.linkFullText = page.text;  // 保留 __SCREENSHOT__ 前缀，buildMessages 会识别
+        } else {
+            fm.linkFullText = page.text.slice(0, 5000);
+        }
+
+        // 把抓到的图片存进 linkFullText（Markdown 图片格式，buildMessages 会提取）
+        if (page.images && page.images.length) {
+if (!fm.linkImage) fm.linkImage = wrapProxyImg(page.images[0]);
+            // 把图片以 Markdown 格式追加到 fullText 末尾
+            if (fm.linkFullText.indexOf('__SCREENSHOT__') !== 0) {
+                var imgMd = '\n\n';
+                page.images.slice(0, 6).forEach(function(imgUrl, idx) {
+                    imgMd += '![图片' + (idx + 1) + '](' + imgUrl + ')\n';
+                });
+                fm.linkFullText += imgMd;
+            }
+        }
         var orig = getDisplayContent(fm);
         fm.content = orig + LINK_DATA_SEP
             + '[链接: ' + url + ']\n'
@@ -3508,9 +4089,7 @@ async function processUserLinkMsg(charId, msgIdx) {
             + '【正文内容】:\n' + page.text.slice(0, 4000)
             + '\n--- [提取结束] ---\n';
 
-        // 提取图片
-        var imgM = page.text.match(/!\[.*?\]\((https?:\/\/[^\s\)]+)\)/);
-        if (imgM && !fm.linkImage) fm.linkImage = imgM[1];
+        if (imgM && !fm.linkImage) fm.linkImage = wrapProxyImg(imgM[1]);
         // 自动识别链接中的图片
         // 自动识别链接中的图片
         var linkImages = (page.images && page.images.length) ? page.images : [];
@@ -3536,13 +4115,98 @@ async function processUserLinkMsg(charId, msgIdx) {
         }
         
         if (linkImages.length > 0) {
-            if (!fm.linkImage) fm.linkImage = linkImages[0];
+            if (!fm.linkImage) fm.linkImage = wrapProxyImg(linkImages[0]);
             save();
             if (curChar && curChar.id === charId && !responding) renderMsgs(false);
-            autoRecognizeLinkImages(charId, msgIdx, linkImages);
+
+            // 状态栏提示
+            if ($('crStatus') && curChar && curChar.id === charId) {
+                $('crStatus').textContent = '正在识别图片...';
+            }
+
+            // ===== 先代理下载为base64，再识图 =====
+            var toRec = linkImages.slice(0, 3);
+            var descs = [];
+            var base64Images = [];
+
+            for (var ri = 0; ri < toRec.length; ri++) {
+                var imgUrl = toRec[ri];
+                try {
+                    if ($('crStatus') && curChar && curChar.id === charId) {
+                        $('crStatus').textContent = '正在下载图片 ' + (ri + 1) + '/' + toRec.length + '...';
+                    }
+                    var b64 = await fetchImageAsBase64(imgUrl, 15000);
+                    if (!b64) {
+                        console.warn('[链接识图] 图片下载失败:', imgUrl);
+                        continue;
+                    }
+                    base64Images.push(b64);
+
+                    if ($('crStatus') && curChar && curChar.id === charId) {
+                        $('crStatus').textContent = '正在识别图片 ' + (ri + 1) + '/' + toRec.length + '...';
+                    }
+                    var desc = await new Promise(function(resolve) {
+                        var done = false;
+                        var to = setTimeout(function() {
+                            if (!done) { done = true; resolve(''); }
+                        }, 20000);
+                        recognizeImage(b64, function(d) {
+                            if (!done) { done = true; clearTimeout(to); resolve(d || ''); }
+                        });
+                    });
+                    if (desc && desc !== '图片' && desc.length > 5) {
+                        descs.push('【图' + (ri + 1) + '】' + desc);
+                    } else {
+                        console.warn('[链接识图] 识图返回无效:', desc);
+                    }
+                } catch(e) {
+                    console.warn('[链接识图] 异常:', e);
+                }
+            }
+
+            // 把识图结果写回消息
+            var fd2 = getAccData();
+            var fm2 = fd2.chats[charId] && fd2.chats[charId][msgIdx];
+            if (fm2) {
+                if (descs.length > 0) {
+                    var imgSection = '\n\n--- [链接中包含 ' + descs.length + ' 张图片，已识别如下] ---\n'
+                                   + descs.join('\n')
+                                   + '\n--- [图片描述结束] ---\n';
+                    fm2.content = (fm2.content || '') + imgSection;
+                    if (fm2.linkFullText) fm2.linkFullText += imgSection;
+                } else if (base64Images.length > 0) {
+                    fm2._linkBase64Images = base64Images;
+                    var fallbackSection = '\n\n--- [链接中包含 ' + base64Images.length + ' 张图片，识别失败，将以原图传给AI] ---\n';
+                    fm2.content = (fm2.content || '') + fallbackSection;
+                }
+                save();
+                if (curChar && curChar.id === charId && !responding) renderMsgs(false);
+            }
+
+            if (descs.length > 0) {
+                toast('✅ 链接图片识别完成（' + descs.length + '张）');
+            } else if (base64Images.length > 0) {
+                toast('⚠️ 图片已下载但识别失败，将直接传原图给AI');
+            } else {
+                toast('⚠️ 图片下载失败');
+            }
         }
+
+    // ===== 质量检测：如果抓到的内容太少，提示用户可以手动粘贴 =====
+    if (fm.linkFullText && fm.linkFullText.length < 500 && isHardSite) {
+        // 内容太少，可能是反爬拦截
+        setTimeout(function() {
+            if (curChar && curChar.id === charId) {
+                toast('⚠️ 该链接内容可能不完整，你可以复制正文后直接发送给AI');
+            }
+        }, 1000);
+    }
+
     } else {
-        fm.linkDesc = fm.linkDesc || '内容暂时无法读取';
+        // 抓取失败
+        fm.linkDesc = '内容暂时无法读取';
+        save();
+        if (curChar && curChar.id === charId && !responding) renderMsgs(false);
     }
 
     save();
@@ -3567,4 +4231,281 @@ function copyLinkUrl() {
         toast('链接暂不可用');
     }
     hideMsgMenu();
+}
+// ★ 角色独立模型 - 渲染下拉列表
+function renderCharModelSelect(selected, modelList) {
+    var list = (modelList || D.api.models || []).slice();
+    var globalModel = D.api.model || '未设置';
+    var h = '<option value="">跟随全局（' + esc(globalModel) + '）</option>';
+
+    for (var i = 0; i < list.length; i++) {
+        var modelName = typeof list[i] === 'string' ? list[i] : (list[i].id || '');
+        if (!modelName) continue;
+        h += '<option value="' + esc(modelName) + '"' + (modelName === selected ? ' selected' : '') + '>' + esc(modelName) + '</option>';
+    }
+
+    if (selected && h.indexOf('value="' + selected + '"') < 0) {
+        h += '<option value="' + esc(selected) + '" selected>' + esc(selected) + '（已保存）</option>';
+    }
+
+    $('charCustomModel').innerHTML = h;
+    $('charCustomModel').value = selected || '';
+}
+
+// ★ 角色独立模型 - 开关切换
+function toggleCharCustomModel() {
+    var on = $('charCustomModelOn').checked;
+    $('charCustomModelWrap').style.opacity = on ? '1' : '0.5';
+    $('charCustomModelWrap').style.pointerEvents = on ? 'auto' : 'none';
+}
+
+// ★ 角色独立模型 - 在角色设置里直接拉取模型
+function fetchCharModels() {
+    var urlInput = $('charModelApiUrl').value.trim();
+    var keyInput = $('charModelApiKey').value.trim();
+
+    // 如果留空就用全局
+    var url = urlInput || D.api.url || 'https://api.openai.com';
+    var key = keyInput || D.api.key || '';
+
+    if (!key) return toast('请填写密钥，或确保全局API已配置');
+
+    url = url.replace(/\/+$/, '');
+
+    var r = $('charModelFetchResult');
+    r.style.display = 'block';
+    r.style.background = '#FFF3CD';
+    r.style.color = '#856404';
+    r.textContent = '⏳ 正在拉取模型列表...';
+
+    fetch(url + '/v1/models', {
+        headers: { 'Authorization': 'Bearer ' + key }
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(d) {
+        if (d.error) throw new Error(d.error.message);
+        var models = d.data || [];
+
+        // 保存到角色的缓存列表
+        if (curChar) {
+            curChar._cachedModels = models;
+        }
+
+        var currentVal = $('charCustomModel').value || $('charModelManual').value.trim() || '';
+        renderCharModelSelect(currentVal, models);
+
+        r.style.background = '#D4EDDA';
+        r.style.color = '#155724';
+        r.textContent = '✅ 成功！共 ' + models.length + ' 个模型';
+
+        setTimeout(function() { r.style.display = 'none'; }, 3000);
+    })
+    .catch(function(e) {
+        r.style.background = '#F8D7DA';
+        r.style.color = '#721c24';
+        r.textContent = '❌ 拉取失败：' + e.message;
+    });
+}
+
+// ★ 角色独立模型 - 手动输入时同步到下拉框
+function onCharModelManualInput() {
+    var val = $('charModelManual').value.trim();
+    if (val) {
+        // 如果下拉框里没有这个选项，添加一个
+        var sel = $('charCustomModel');
+        var found = false;
+        for (var i = 0; i < sel.options.length; i++) {
+            if (sel.options[i].value === val) { found = true; break; }
+        }
+        if (!found) {
+            var opt = document.createElement('option');
+            opt.value = val;
+            opt.textContent = val + '（手动输入）';
+            sel.appendChild(opt);
+        }
+        sel.value = val;
+    }
+}
+// ========== 图片选择处理（从相册选图后的处理流程）==========
+function onImageSelect(event) {
+    var file = event.target.files && event.target.files[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!file.type || file.type.indexOf('image/') !== 0) return toast('请选择图片');
+
+    toast('① 开始处理');
+
+    var reader = new FileReader();
+    reader.onload = function(ev) {
+        toast('② 文件读取完');
+
+        compressImg(ev.target.result, function(finalUrl) {
+            if (!finalUrl) return toast('❌ 处理失败');
+
+            var isUrl = finalUrl.indexOf('http') === 0;
+            toast('③ 拿到地址：' + (isUrl ? 'URL ✅' : 'base64 ❌'));
+
+            var inPub = $('publishPage') && $('publishPage').classList.contains('active');
+            var needRec = D.settings && D.settings.autoImageDesc !== false;
+
+            function sendImg(desc) {
+                // 关键：只有真正识图成功才存 imageDesc，否则一律不存这个字段
+                var hasRealDesc = desc && desc !== '图片' && desc.length > 2;
+                toast('④ 发送：' + (hasRealDesc ? '带描述' : '不带描述（让AI看真图）'));
+
+                if (inPub) {
+                    pubImages.push({ url: finalUrl, desc: hasRealDesc ? desc : '图片' });
+                    renderPubImages();
+                    checkPublish();
+                } else if (curChar) {
+                    var msg = {
+                        role: 'user',
+                        type: 'image',
+                        imageUrl: finalUrl,
+                        time: Date.now()
+                    };
+                    // 没真实描述时绝对不写 imageDesc 字段
+                    if (hasRealDesc) msg.imageDesc = desc;
+                    appendMsg(msg);
+                    triggerAutoReply();
+                } else {
+                    toast('请先打开聊天或朋友圈');
+                }
+            }
+
+            if (needRec && typeof recognizeImage === 'function') {
+                toast('③⁺ 开始识图');
+                recognizeImage(finalUrl, function(desc) {
+                    sendImg(desc);
+                });
+            } else {
+                toast('③⁺ 跳过识图');
+                sendImg('');
+            }
+        });
+    };
+    reader.onerror = function() { toast('读取失败'); };
+    reader.readAsDataURL(file);
+}
+// ========== 查看消息真实数据（手机端调试用）==========
+function viewMsgData() {
+    var data = getAccData();
+    var charId = curChar ? curChar.id : respondingCharId;
+    var msg = data.chats[charId] && data.chats[charId][selectedMsgIdx];
+    if (!msg) { hideMsgMenu(); return; }
+
+    var info = '';
+    info += '═══ 基本信息 ═══\n';
+    info += 'ID: ' + (msg.id || '(无)') + '\n';
+    info += '类型: ' + (msg.type || 'text') + '\n';
+    info += '角色: ' + msg.role + '\n';
+    info += '时间: ' + new Date(msg.time).toLocaleString() + '\n\n';
+
+    if (msg.type === 'image') {
+        info += '═══ 图片数据 ═══\n';
+        var url = msg.imageUrl || '';
+        if (!url) {
+            info += '⚠️ imageUrl 为空\n\n';
+        } else if (url.indexOf('data:') === 0) {
+            info += '❌ 存储格式: base64（极占token）\n';
+            info += '大小: ' + Math.round(url.length / 1024) + ' KB\n';
+            info += '说明: 没有上传图床\n';
+            info += '前60字: ' + url.slice(0, 60) + '...\n\n';
+        } else if (url.indexOf('http') === 0) {
+            info += '✅ 存储格式: URL（已上传图床）\n';
+            info += 'URL: ' + url + '\n\n';
+        } else {
+            info += '⚠️ 未知格式\n值: ' + url.slice(0, 100) + '\n\n';
+        }
+
+        info += '═══ imageDesc 字段（关键！）═══\n';
+        if (!msg.imageDesc) {
+            info += '✅ 空字符串\n';
+            info += '→ AI会切换到 vision 模式直接看真图\n\n';
+        } else {
+            info += '内容: "' + msg.imageDesc + '"\n';
+            info += '⚠️ AI会用文字代替图片，看不到真图！\n';
+            info += '→ AI实际收到: [图片: ' + msg.imageDesc + ']\n\n';
+        }
+
+        info += '═══ AI实际收到的内容 ═══\n';
+        if (msg.imageDesc) {
+            info += '[图片: ' + msg.imageDesc + ']\n';
+            info += '（纯文字，AI看不到真图）\n';
+        } else if (url && url.indexOf('http') === 0) {
+            info += '文字: "用户发送了图片："\n';
+            info += '+图片URL: ' + url + '\n';
+            info += '（vision模式，AI能看到真图）\n';
+        } else if (url && url.indexOf('data:') === 0) {
+            info += '文字: "用户发送了图片："\n';
+            info += '+base64图片（占大量token）\n';
+            info += '（vision模式，但极费token）\n';
+        } else {
+            info += '⚠️ 没有图片URL，AI看不到任何东西\n';
+        }
+    } else if (msg.type === 'link') {
+        info += '═══ 链接数据 ═══\n';
+        info += 'URL: ' + (msg.linkUrl || '(无)') + '\n';
+        info += '标题: ' + (msg.linkTitle || '(无)') + '\n';
+        info += '描述: ' + (msg.linkDesc || '(无)') + '\n';
+        info += '已抓取正文长度: ' + (msg.linkFullText ? msg.linkFullText.length : 0) + ' 字\n\n';
+        info += '═══ 用户附言 ═══\n';
+        info += (typeof getDisplayContent === 'function' ? getDisplayContent(msg) : msg.content) + '\n';
+    } else {
+        info += '═══ 内容 ═══\n';
+        info += (msg.content || '(空)') + '\n';
+    }
+
+    info += '\n═══ 当前图床设置 ═══\n';
+    info += 'useImageHost: ' + (D.settings.useImageHost === true ? '✅ true' : '❌ ' + D.settings.useImageHost) + '\n';
+    info += 'imgbbKey: ' + (D.settings.imgbbKey ? '已填写(' + D.settings.imgbbKey.length + '位)' : '❌ 空') + '\n';
+    info += 'autoImageDesc: ' + (D.settings.autoImageDesc !== false ? '开' : '关') + '\n';
+
+    showMsgDataDialog(info, msg);
+    hideMsgMenu();
+}
+
+function showMsgDataDialog(text, msg) {
+    var old = document.getElementById('msgDataDialog');
+    if (old) old.remove();
+
+    var mask = document.createElement('div');
+    mask.id = 'msgDataDialog';
+    mask.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:999999;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)';
+
+    var box = document.createElement('div');
+    box.style.cssText = 'background:white;border-radius:16px;max-width:420px;width:100%;max-height:80vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,0.3)';
+
+    var html = '';
+    html += '<div style="padding:14px 16px;border-bottom:1px solid #eee;display:flex;align-items:center;justify-content:space-between">';
+    html += '<span style="font-weight:600;font-size:15px">🔍 消息数据</span>';
+    html += '<button id="_msgDataClose" style="border:none;background:#f0f0f0;border-radius:50%;width:28px;height:28px;cursor:pointer;font-size:14px;line-height:1">×</button>';
+    html += '</div>';
+    html += '<div style="padding:14px 16px;overflow-y:auto;flex:1;-webkit-overflow-scrolling:touch">';
+    html += '<pre style="margin:0;white-space:pre-wrap;word-break:break-all;font-family:-apple-system,Menlo,monospace;font-size:12px;color:#222;line-height:1.7">' + esc(text) + '</pre>';
+    html += '</div>';
+    html += '<div style="padding:10px 16px;border-top:1px solid #eee;display:flex;gap:8px;flex-wrap:wrap">';
+    html += '<button id="_msgDataCopyAll" style="flex:1;min-width:100px;padding:10px;border:none;border-radius:10px;background:var(--primary);color:white;font-size:13px;cursor:pointer">📋 复制全部</button>';
+    if (msg && msg.type === 'image' && msg.imageUrl && msg.imageUrl.indexOf('http') === 0) {
+        html += '<button id="_msgDataCopyUrl" style="flex:1;min-width:100px;padding:10px;border:none;border-radius:10px;background:#4CAF50;color:white;font-size:13px;cursor:pointer">复制URL</button>';
+    }
+    html += '</div>';
+
+    box.innerHTML = html;
+    mask.appendChild(box);
+    document.body.appendChild(mask);
+
+    document.getElementById('_msgDataClose').onclick = function() { mask.remove(); };
+    mask.onclick = function(e) { if (e.target === mask) mask.remove(); };
+    document.getElementById('_msgDataCopyAll').onclick = function() {
+        try { navigator.clipboard.writeText(text); toast('已复制'); }
+        catch (e) { toast('复制失败'); }
+    };
+    var urlBtn = document.getElementById('_msgDataCopyUrl');
+    if (urlBtn) {
+        urlBtn.onclick = function() {
+            try { navigator.clipboard.writeText(msg.imageUrl); toast('URL 已复制'); }
+            catch (e) { toast('复制失败'); }
+        };
+    }
 }

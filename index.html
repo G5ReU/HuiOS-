@@ -11,7 +11,7 @@
     <meta name="apple-mobile-web-app-title" content="HuIOS">
     <link rel="manifest" href="manifest.json">
     <link rel="stylesheet" href="样式.css">
-<script src="https://cdn.staticfile.net/dexie/3.2.4/dexie.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
 </head>
 <body>                 
 <script>
@@ -342,7 +342,61 @@ if ("serviceWorker" in navigator) {
     <input type="number" id="callMemoryCount" value="3" min="0" max="10">
     <div style="font-size:11px;color:var(--text-gray);margin-top:4px">AI在通话中会参考最近N次通话的内容</div>
 </div>
-    <label>📧 AI邮箱号</label>
+<!-- ★ 角色独立模型 -->
+<h3>🤖 角色独立模型</h3>
+<div style="padding:14px 16px;background:linear-gradient(135deg, #f8f9ff 0%, #f0f4ff 100%);border-radius:14px;border:1px solid rgba(99,102,241,0.12);margin-bottom:16px">
+    <div class="s-item" style="padding:10px 0;border:none">
+        <div class="s-left"><span style="font-size:13px">启用独立模型</span></div>
+        <label class="switch">
+            <input type="checkbox" id="charCustomModelOn" onchange="toggleCharCustomModel()">
+            <span class="slider"></span>
+        </label>
+    </div>
+
+    <div id="charCustomModelWrap" style="transition:opacity 0.2s">
+        <!-- API 配置行 -->
+        <div style="display:flex;gap:8px;margin-bottom:10px;align-items:flex-end">
+            <div style="flex:1">
+                <div style="font-size:11px;color:#999;margin-bottom:4px">API地址</div>
+                <input type="text" id="charModelApiUrl" placeholder="留空则跟随全局" style="width:100%;padding:9px 12px;border:1.5px solid #e0e4f0;border-radius:10px;font-size:12px;box-sizing:border-box;outline:none">
+            </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:10px;align-items:flex-end">
+            <div style="flex:1">
+                <div style="font-size:11px;color:#999;margin-bottom:4px">密钥</div>
+                <input type="password" id="charModelApiKey" placeholder="留空则跟随全局" style="width:100%;padding:9px 12px;border:1.5px solid #e0e4f0;border-radius:10px;font-size:12px;box-sizing:border-box;outline:none">
+            </div>
+        </div>
+
+        <!-- 拉取 + 模型选择 -->
+        <div style="display:flex;gap:8px;margin-bottom:10px;align-items:flex-end">
+            <div style="flex:1">
+                <div style="font-size:11px;color:#999;margin-bottom:4px">模型</div>
+                <select id="charCustomModel" style="width:100%;padding:9px 12px;border:1.5px solid #e0e4f0;border-radius:10px;font-size:12px;background:white;color:#333;appearance:none;-webkit-appearance:none;background-image:url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2212%22 height=%2212%22 viewBox=%220 0 12 12%22><path d=%22M3 4.5L6 7.5L9 4.5%22 fill=%22none%22 stroke=%22%23999%22 stroke-width=%221.5%22/></svg>');background-repeat:no-repeat;background-position:right 12px center;cursor:pointer;box-sizing:border-box">
+                </select>
+            </div>
+            <button onclick="fetchCharModels()" style="padding:9px 14px;border:none;border-radius:10px;background:var(--primary);color:white;font-size:12px;cursor:pointer;white-space:nowrap;flex-shrink:0;height:38px">🔗 拉取</button>
+        </div>
+
+        <!-- 拉取结果提示 -->
+        <div id="charModelFetchResult" style="font-size:11px;padding:6px 10px;border-radius:8px;display:none;margin-bottom:8px"></div>
+
+        <!-- 手动输入 -->
+        <div style="display:flex;gap:8px;align-items:flex-end">
+            <div style="flex:1">
+                <div style="font-size:11px;color:#999;margin-bottom:4px">或手动输入模型名</div>
+                <input type="text" id="charModelManual" placeholder="如 gpt-4o-mini" style="width:100%;padding:9px 12px;border:1.5px solid #e0e4f0;border-radius:10px;font-size:12px;box-sizing:border-box;outline:none" oninput="onCharModelManualInput()">
+            </div>
+        </div>
+
+        <div style="font-size:11px;color:#999;margin-top:10px;padding-left:2px;line-height:1.6">
+            💡 不开启时使用全局模型。<br>
+            API地址和密钥留空则跟随全局设置，只覆盖模型。<br>
+            填写后此角色将使用独立的API配置。
+        </div>
+    </div>
+</div>
+ <label>📧 AI邮箱号</label>
     <input type="text" id="editChatEmailAddress" placeholder="例如：xiaohui@huiphone.com" style="font-size:13px">
     <div style="font-size:11px;color:var(--text-gray);margin-top:4px">填写后AI在聊天中被问到邮箱时会说出此地址，用户也可用此地址给TA发邮件</div>
 </div>
@@ -929,22 +983,101 @@ if ("serviceWorker" in navigator) {
                     <span class="s-value" id="api2Status">未配置 ›</span>
                 </div>
             </div>
-            <div class="s-title">图片压缩</div>
-            <div class="s-section">
-                <div class="s-item">
-                    <div class="s-left"><div class="s-icon" style="background:var(--accent-pink)">📐</div><span>压缩尺寸</span></div>
-                    <select class="s-input" style="width:90px" id="imgSizeSelect" onchange="saveSettings()">
-                        <option value="728">大(728)</option>
-                        <option value="512">中(512)</option>
-                        <option value="368">小(368)</option>
-                    </select>
-                </div>
-                <div class="s-item">
-                    <div class="s-left"><div class="s-icon" style="background:var(--accent-pink)">🎚️</div><span>JPEG质量</span></div>
-                    <input type="range" id="imgQualityRange" min="0.3" max="1" step="0.1" style="width:80px" onchange="saveSettings()">
-                    <span id="imgQualityVal" style="font-size:12px;color:var(--text-gray);margin-left:6px">0.6</span>
-                </div>
+<div class="s-title">图片压缩</div>
+<div class="s-section">
+    <div class="s-item">
+        <div class="s-left"><div class="s-icon" style="background:var(--accent-pink)">📐</div><span>压缩尺寸</span></div>
+        <select class="s-input" style="width:90px" id="imgSizeSelect" onchange="saveSettings()">
+            <option value="728">大(728)</option>
+            <option value="512">中(512)</option>
+            <option value="368">小(368)</option>
+        </select>
+    </div>
+    <div class="s-item">
+        <div class="s-left"><div class="s-icon" style="background:var(--accent-pink)">🎚️</div><span>JPEG质量</span></div>
+        <input type="range" id="imgQualityRange" min="0.3" max="1" step="0.1" style="width:80px" onchange="saveSettings()">
+        <span id="imgQualityVal" style="font-size:12px;color:var(--text-gray);margin-left:6px">0.6</span>
+    </div>
+</div>
+
+<div class="s-title">图片理解</div>
+<div class="s-section">
+    <!-- 主动识图：开启后调用副API把图片识别成中文描述，AI读文字而非真图。
+         好处是历史图永远不重复占用token，缺点是依赖识图准确度，
+         且每发一张图都要多一次副API调用。 -->
+    <div class="s-item">
+        <div class="s-left">
+            <div class="s-icon" style="background:var(--accent-blue)">🖼️</div>
+            <div>
+                <div style="font-size:14px">开启主动识图</div>
+                <div style="font-size:11px;color:var(--text-light);margin-top:3px;line-height:1.45">用副API把图片识别成中文描述，AI看文字而非真图</div>
             </div>
+        </div>
+        <label class="switch">
+            <input type="checkbox" id="autoImageDescOn" onchange="saveSettings()">
+            <span class="slider"></span>
+        </label>
+    </div>
+
+    <!-- 图片仅发送一轮：仅在关闭"主动识图"时显示。
+         关闭识图后AI得直接看真图，如果每轮都重发全部历史图，
+         token会随聊天越积越多越炸。开启此项后：
+           - 真图只在"刚发出、等AI回复"的那一轮发送
+           - 之后的对话里用 [图片] 占位文本代替
+         代价：AI在后续轮次回看不到图的细节，但通常它在首轮回复里
+         已经把图的内容融进对话了，影响有限。 -->
+    <div class="s-item base64-once-item">
+        <div class="s-left">
+            <div class="s-icon" style="background:var(--accent-yellow)">♻️</div>
+            <div>
+                <div style="font-size:14px">图片仅发送一轮</div>
+                <div style="font-size:11px;color:var(--text-light);margin-top:3px;line-height:1.45">真图只在首轮发给AI，后续轮次用占位文本代替，省下大量token</div>
+            </div>
+        </div>
+        <label class="switch">
+            <input type="checkbox" id="base64OneRoundOn" onchange="saveSettings()">
+            <span class="slider"></span>
+        </label>
+    </div>
+</div>
+<div class="s-title">链接抓取</div>
+<div class="s-section">
+    <div class="s-item">
+        <div class="s-left">
+            <div class="s-icon" style="background:var(--accent-blue)">📸</div>
+            <div>
+                <div style="font-size:14px">链接同时截取长图</div>
+                <div style="font-size:11px;color:var(--text-light);margin-top:3px;line-height:1.45">抓取链接时同步截取网页全屏长图，确保AI能看到页面内容（即使文字抓取成功也会截图）</div>
+            </div>
+        </div>
+        <label class="switch">
+            <input type="checkbox" id="linkScreenshotOn" onchange="saveSettings()">
+            <span class="slider"></span>
+        </label>
+    </div>
+</div>
+<div class="s-title">图床上传</div>
+<div class="s-section">
+    <!-- 图床总开关：开启后图片先压缩再上传到 ImgBB，消息里只存 URL，
+         比 base64 节省巨量 token；关闭则直接存 base64 到本地。 -->
+    <div class="s-item">
+        <div class="s-left">
+            <div class="s-icon" style="background:var(--accent-blue)">☁️</div>
+            <span>使用 ImgBB 图床</span>
+        </div>
+        <label class="switch">
+            <input type="checkbox" id="useImageHostOn" onchange="saveSettings()">
+            <span class="slider"></span>
+        </label>
+    </div>
+    <div class="s-item imgbb-key-item">
+        <div class="s-left">
+            <div class="s-icon" style="background:var(--accent-mint)">🔑</div>
+            <span>API Key</span>
+        </div>
+        <input type="password" class="s-input" style="width:130px" id="imgbbKey" placeholder="粘贴你的Key" oninput="saveSettings()">
+    </div>
+</div>
 <div class="s-title" style="display:flex;align-items:center;gap:8px">生图<a href="https://enter.pollinations.ai/sign-in" target="_blank" style="font-size:11px;color:var(--text-gray);font-weight:400;text-decoration:none">获取Key ›</a></div>
             <div class="s-section">
                 <div class="s-item"><div class="s-left"><div class="s-icon" style="background:var(--accent-lavender)">🎨</div><span>Pollinations生图</span></div><label class="switch"><input type="checkbox" id="polliOn" onchange="saveSettings()"><span class="slider"></span></label></div>
@@ -2010,6 +2143,8 @@ window.onerror = function(msg, src, line, col, err) {
     <script src="游戏系统.js"></script>
     <script src="邮箱系统.js"></script>
     <script src="查手机系统.js"></script>
+    <script src="scraper.js"></script>
+    <script src="worker对接.js"></script>
     <script src="界面设置.js"></script>
     <script src="gengxin.js"></script>
     <script src="链接系统.js"></script>

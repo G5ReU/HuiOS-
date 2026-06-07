@@ -80,13 +80,28 @@ function loadSettingsUI() {
     $('bgInterval').value = D.settings.bgInterval;
    if ($('bgDmOn')) $('bgDmOn').checked = true;
 if ($('bgMomentOn')) $('bgMomentOn').checked = true;
-    $('imgSizeSelect').value = D.settings.imgSize || 512;
+// 确保下拉框有"原图"选项
+var imgSel = $('imgSizeSelect');
+if (imgSel && !imgSel.querySelector('option[value="0"]')) {
+    var origOpt = document.createElement('option');
+    origOpt.value = '0';
+    origOpt.textContent = '原图直发（不压缩）';
+    imgSel.insertBefore(origOpt, imgSel.firstChild);
+}
+$('imgSizeSelect').value = (D.settings.imgSize === 0) ? '0' : (D.settings.imgSize || 512);
     $('imgQualityRange').value = D.settings.imgQuality || 0.6;
     $('imgQualityVal').textContent = D.settings.imgQuality || 0.6;
+    $('autoImageDescOn').checked = D.settings.autoImageDesc !== false;
+$('base64OneRoundOn').checked = D.settings.imageOneRound !== false;
+    $('useImageHostOn').checked = D.settings.useImageHost !== false;
+    if ($('linkScreenshotOn')) $('linkScreenshotOn').checked = D.settings.linkScreenshot !== false;
+    $('imgbbKey').value = D.settings.imgbbKey || '';
     updateDelayVis();
     updatePolliVis();
     updateBgVis();
     updateApi2Status();
+    updateImgHostVis();
+updateBase64OneRoundVis();
 }
 
 function saveSettings() {
@@ -102,14 +117,22 @@ function saveSettings() {
     D.settings.bgInterval = parseInt($('bgInterval').value) || 120;
 D.settings.bgDmOn = true;
 D.settings.bgMomentOn = true;
-    D.settings.imgSize = parseInt($('imgSizeSelect').value) || 512;
+var _imgSizeVal = parseInt($('imgSizeSelect').value);
+D.settings.imgSize = (_imgSizeVal === 0) ? 0 : (_imgSizeVal || 512);
     D.settings.imgQuality = parseFloat($('imgQualityRange').value) || 0.6;
     $('imgQualityVal').textContent = D.settings.imgQuality;
+    D.settings.autoImageDesc = $('autoImageDescOn').checked;
+D.settings.imageOneRound = $('base64OneRoundOn').checked;
+    D.settings.useImageHost = $('useImageHostOn').checked;
+    if ($('linkScreenshotOn')) D.settings.linkScreenshot = $('linkScreenshotOn').checked;
+    D.settings.imgbbKey = $('imgbbKey').value.trim();
     save();
     startBgTimer();
     updatePolliVis();
     updateBgVis();
     updateDelayVis();
+    updateImgHostVis();
+updateBase64OneRoundVis();
 
     // 关键：后台开关变化后立即同步到服务端
     if (typeof queueBgSync === 'function') queueBgSync(0);
@@ -127,9 +150,25 @@ function updatePolliVis() {
     });
 }
 
+function updateImgHostVis() {
+    var show = D.settings.useImageHost !== false;
+    document.querySelectorAll('.imgbb-key-item').forEach(function(el) {
+        el.style.display = show ? 'flex' : 'none';
+    });
+}
 function updateBgVis() {
     var show = D.settings.bgOn === true;
     document.querySelectorAll('.bg-item').forEach(function(el) {
+        el.style.display = show ? 'flex' : 'none';
+    });
+}
+
+// "图片仅发送一轮"开关的显隐规则：
+// 只有关闭"主动识图"时它才有意义——开了识图后图片本来就全转文字了，
+// 真图根本不会进对话，"仅发一轮"也就无从谈起。
+function updateBase64OneRoundVis() {
+    var show = !$('autoImageDescOn').checked;
+    document.querySelectorAll('.base64-once-item').forEach(function(el) {
         el.style.display = show ? 'flex' : 'none';
     });
 }
@@ -151,9 +190,10 @@ function testApi() {
     .then(function(res) { return res.json(); })
     .then(function(d) {
         if (d.error) throw new Error(d.error.message);
-        var models = d.data || [];
-        $('modelSelect').innerHTML = models.map(function(m) { return '<option value="'+m.id+'">'+m.id+'</option>'; }).join('');
-        r.style.background = '#D4EDDA'; r.textContent = '✅ 成功！' + models.length + '个模型';
+var models = d.data || [];
+D.api.models = models;  // ★ 新增：存模型列表给角色设置用
+$('modelSelect').innerHTML = models.map(function(m) { return '<option value="'+m.id+'">'+m.id+'</option>'; }).join('');
+r.style.background = '#D4EDDA'; r.textContent = '✅ 成功！' + models.length + '个模型';
     })
     .catch(function(e) { r.style.background = '#F8D7DA'; r.textContent = '❌ ' + e.message; });
 }
